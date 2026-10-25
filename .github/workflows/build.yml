@@ -1,0 +1,35 @@
+name: Build BeatsByBony (Windows VST3)
+
+on:
+  push:
+  workflow_dispatch:      # lets you press "Run workflow" by hand
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up the build
+        run: cmake -S . -B build -A x64
+
+      - name: Build the plugin
+        run: cmake --build build --config Release --target BeatsByBony_VST3 --parallel
+
+      - name: Collect the finished plugin
+        shell: pwsh
+        run: |
+          $vst3 = Get-ChildItem -Path build -Recurse -Directory -Filter "BeatsByBony.vst3" | Select-Object -First 1
+          if (-not $vst3) { throw "The build did not produce BeatsByBony.vst3" }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse -Force $vst3.FullName dist/BeatsByBony.vst3
+          Copy-Item installer/Install-BeatsByBony.bat dist/
+          Copy-Item README.md dist/
+          Get-ChildItem -Recurse dist | Select-Object FullName
+
+      - name: Upload (this is the file you download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeatsByBony-Windows-VST3
+          path: dist

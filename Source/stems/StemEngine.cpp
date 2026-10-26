@@ -1,5 +1,6 @@
 #include "StemEngine.h"
 #include "OrtRuntime.h"
+#include "Log.h"
 #include "../dsp/Resampler.h"
 #include <thread>
 
@@ -38,6 +39,7 @@ void StemEngine::run()
 
     try
     {
+        logLine ("split: start, instruments=" + juce::String ((int) o.instruments) + " vocalSplit=" + juce::String ((int) o.vocalSplit) + " quick=" + juce::String ((int) o.quickTest));
         setStatus ("Getting the audio ready...");
         // ---- stereo @ 44.1 kHz ----
         const int chans = src->audio.getNumChannels();
@@ -60,6 +62,7 @@ void StemEngine::run()
                              std::vector<float>& oL, std::vector<float>& oR, const char* label) -> bool
         {
             setStatus (juce::String ("Loading ") + label + "...");
+            logLine (juce::String ("split: model ") + label);
             const auto& mi = ModelManager::info (w);
             MdxModel model (models.fileFor (w).getFullPathName().toStdString(), mi.spec, threads);
             setStatus (juce::String ("Splitting: ") + label);
@@ -85,7 +88,8 @@ void StemEngine::run()
 
         if (o.instruments)
         {
-            setStatus ("Loading drums, bass and music finder...");
+            setStatus ("Loading drums, bass and music finder (this can take a minute)...");
+            logLine ("split: demucs");
             try
             {
                 DemucsModel dem (models.fileFor (ModelManager::Demucs).getFullPathName().toStdString(), threads);
@@ -134,10 +138,11 @@ void StemEngine::run()
         }
 
         { const juce::ScopedLock sl (lock); result = out; }
+        logLine ("split: finished");
         prog = 1.0f;
         state = State::Done;
         setStatus ("Done");
     }
-    catch (const std::exception& e) { fail (juce::String ("Separation failed: ") + e.what()); }
+    catch (const std::exception& e) { logLine (juce::String ("split: FAILED ") + e.what()); fail (juce::String ("Separation failed: ") + e.what()); }
 }
 }

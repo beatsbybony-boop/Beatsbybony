@@ -1,21 +1,21 @@
-#include "SplitPage.h"
-#include "Art.h"
+#include "SplitterPage.h"
+#include "../ui/Art.h"
 
 namespace bony
 {
 using namespace juce;
 using namespace theme;
 
-class SplitPage::Tape : public Component
+class SplitterPage::Tape : public Component
 {
 public:
-    Tape (BonyProcessor& p, int s, Colour c) : proc (p), slot (s), accent (c)
+    Tape (SplitterCore& p, int s, Colour c) : proc (p), slot (s), accent (c)
     {
         addAndMakeVisible (listen); listen.setColour (ToggleButton::tickColourId, c); listen.setToggleState (true, dontSendNotification);
-        listen.onClick = [this] { proc.stemAudible[(size_t) slot] = listen.getToggleState(); };
+        listen.onClick = [this] { proc.audible[(size_t) slot] = listen.getToggleState(); };
         addAndMakeVisible (vol); vol.setSliderStyle (Slider::LinearHorizontal); vol.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
         vol.setRange (0.0, 1.5, 0.01); vol.setValue (1.0); vol.setColour (Slider::thumbColourId, c);
-        vol.onValueChange = [this] { proc.stemGain[(size_t) slot] = (float) vol.getValue(); };
+        vol.onValueChange = [this] { proc.gain[(size_t) slot] = (float) vol.getValue(); };
         addAndMakeVisible (save); save.setColour (TextButton::buttonColourId, c);
         save.onClick = [this]
         {
@@ -29,10 +29,10 @@ public:
     void paint (Graphics& g) override
     {
         const bool have = present();
-        const bool audible = have && listen.getToggleState() && proc.getPlayMode() == PlayMode::Split;
+        const bool audible = have && listen.getToggleState() && proc.isPlaying();
         art::drawCassette (g, Rectangle<float> (((float) getWidth() - 160.0f) * 0.5f, 30.0f, 160.0f, 100.0f), stemSlotName (slot), accent, angle, have && listen.getToggleState(), ! have, slot == kLead);
         if (! have) { g.setColour (dim.brighter (0.4f)); g.setFont (display (14.0f)); g.drawText ("EMPTY - HIT SPLIT IT", 0, 134, getWidth(), 14, Justification::centred); }
-        else { g.setColour (accent); g.setFont (body (11.0f, true)); g.drawText ("DRAG ME INTO YOUR DAW", 0, 134, getWidth(), 14, Justification::centred); }
+        else { g.setColour (accent); g.setFont (body (11.0f, true)); g.drawText ("DRAG ME INTO FL STUDIO", 0, 134, getWidth(), 14, Justification::centred); }
         juce::ignoreUnused (audible);
     }
     void resized() override
@@ -55,16 +55,16 @@ public:
     float angle = 0.0f;
     ToggleButton listen { "LISTEN" };
 private:
-    BonyProcessor& proc; int slot; Colour accent; bool dragging = false;
+    SplitterCore& proc; int slot; Colour accent; bool dragging = false;
     Slider vol; TextButton save { "SAVE" };
     std::shared_ptr<FileChooser> chooser;
 };
 
-SplitPage::SplitPage (BonyProcessor& p) : proc (p)
+SplitterPage::SplitterPage (SplitterCore& p) : proc (p)
 {
     const Colour cols[kNumSlots] = { pink, yellow, cyan, orange, lime, violet.brighter (0.4f) };
     for (int i = 0; i < kNumSlots; ++i) { tapes.add (new Tape (p, i, cols[i])); addAndMakeVisible (tapes.getLast()); }
-    for (auto* b : { &dlBtn, &goBtn, &playBtn, &saveAllBtn, &folderBtn }) addAndMakeVisible (b);
+    for (auto* b : { &dlBtn, &goBtn, &playBtn, &saveAllBtn, &loadBtn, &folderBtn }) addAndMakeVisible (b);
     for (auto* t : { &optInstr, &optVocal, &optQuick }) addAndMakeVisible (t);
     optInstr.setToggleState (true, dontSendNotification); optVocal.setToggleState (true, dontSendNotification);
     optInstr.setColour (ToggleButton::tickColourId, orange); optVocal.setColour (ToggleButton::tickColourId, yellow); optQuick.setColour (ToggleButton::tickColourId, lime);
@@ -73,6 +73,8 @@ SplitPage::SplitPage (BonyProcessor& p) : proc (p)
     playBtn.setColour (TextButton::buttonColourId, yellow); playBtn.setColour (TextButton::buttonOnColourId, orange);
     saveAllBtn.setColour (TextButton::buttonColourId, cyan);
     folderBtn.setColour (TextButton::buttonColourId, violet.brighter (0.4f));
+    loadBtn.setColour (TextButton::buttonColourId, lime);
+    loadBtn.onClick = [this] { loadDialog(); };
 
     dlBtn.onClick = [this] { proc.models.startDownload(); refresh(); };
     folderBtn.onClick = [] { auto d = ModelManager::modelsFolder(); d.createDirectory(); d.revealToUser(); };
@@ -80,14 +82,14 @@ SplitPage::SplitPage (BonyProcessor& p) : proc (p)
     {
         if (proc.stems.getState() == StemEngine::State::Working) { proc.stems.cancel(); return; }
         if (! proc.getSource()) return;
-        proc.setPlayMode (PlayMode::Off);
+        proc.setPlaying (false);
         StemEngine::Options o; o.instruments = optInstr.getToggleState(); o.vocalSplit = optVocal.getToggleState(); o.quickTest = optQuick.getToggleState();
         proc.stems.start (proc.getSource(), o);
     };
     playBtn.onClick = [this]
     {
-        if (proc.getPlayMode() == PlayMode::Split) proc.setPlayMode (PlayMode::Off);
-        else if (proc.getStems()) proc.setPlayMode (PlayMode::Split);
+        if (proc.isPlaying()) proc.setPlaying (false);
+        else if (proc.getStems()) proc.setPlaying (true);
     };
     saveAllBtn.onClick = [this]
     {
@@ -106,17 +108,17 @@ SplitPage::SplitPage (BonyProcessor& p) : proc (p)
     refresh();
 }
 
-SplitPage::~SplitPage() { proc.removeChangeListener (this); }
+SplitterPage::~SplitterPage() { proc.removeChangeListener (this); }
 
-void SplitPage::timerCallback()
+void SplitterPage::timerCallback()
 {
-    const bool playing = proc.getPlayMode() == PlayMode::Split;
+    const bool playing = proc.isPlaying();
     const bool busy = proc.stems.getState() == StemEngine::State::Working || proc.models.isDownloading();
     if (playing || busy) { spin += 0.18f; for (auto* t : tapes) { if (playing && t->listen.getToggleState()) t->angle += 0.22f; t->repaint(); } }
     if (busy) refresh();
 }
 
-void SplitPage::refresh()
+void SplitterPage::refresh()
 {
     const bool have = proc.models.allPresent();
     const bool working = proc.stems.getState() == StemEngine::State::Working;
@@ -124,33 +126,34 @@ void SplitPage::refresh()
     dlBtn.setEnabled (! proc.models.isDownloading());
     goBtn.setEnabled (have && (proc.getSource() != nullptr || working));
     goBtn.setButtonText (working ? "CANCEL" : "SPLIT IT!");
-    playBtn.setButtonText (proc.getPlayMode() == PlayMode::Split ? "STOP" : "PLAY");
-    playBtn.setToggleState (proc.getPlayMode() == PlayMode::Split, dontSendNotification);
+    playBtn.setButtonText (proc.isPlaying() ? "STOP" : "PLAY");
+    playBtn.setToggleState (proc.isPlaying(), dontSendNotification);
     playBtn.setEnabled (proc.getStems() != nullptr);
     saveAllBtn.setEnabled (proc.getStems() != nullptr);
 
     if (proc.models.isDownloading()) { counterValue = proc.models.progress(); counterText = proc.models.statusText() + " " + String ((int) (counterValue * 100)) + "%"; }
     else if (working) { counterValue = proc.stems.progress(); counterText = proc.stems.statusText() + "  " + String ((int) (counterValue * 100)) + "%"; }
     else if (proc.stems.getState() == StemEngine::State::Failed) { counterValue = 0; counterText = proc.stems.errorText(); }
+    else if (proc.lastError().isNotEmpty()) { counterValue = 0; counterText = proc.lastError(); }
     else if (proc.models.lastError().isNotEmpty()) { counterValue = 0; counterText = proc.models.lastError(); }
     else if (! have) { counterValue = 0; counterText = "STEP 1: DOWNLOAD THE MODELS ONCE (ABOUT 290 MB)"; }
-    else if (! proc.getSource()) { counterValue = 0; counterText = "LOAD A SONG ON THE GRAB PAGE (OR DROP ONE ON THE PLUGIN)"; }
+    else if (! proc.getSource()) { counterValue = 0; counterText = "STEP 2: LOAD A SONG (OR DROP A FILE ON THIS WINDOW)"; }
     else if (proc.getStems()) { counterValue = 1.0f; counterText = "DONE - DRAG THE TAPES OUT"; }
     else { counterValue = 0; counterText = "READY: " + proc.getSource()->name; }
     repaint();
     for (auto* t : tapes) t->repaint();
 }
 
-void SplitPage::paint (Graphics& g)
+void SplitterPage::paint (Graphics& g)
 {
     art::drawDeck (g, getLocalBounds().reduced (12, 8).toFloat().withTrimmedBottom (4), "STEM SPLITTER", cyan);
     art::drawTapeCounter (g, Rectangle<float> (26.0f, 68.0f, (float) getWidth() - 52.0f, 28.0f), counterValue, counterText.toUpperCase());
-    g.setColour (dim.brighter (0.5f)); g.setFont (body (12.0f, true));
-    g.drawText ("Full songs take a few minutes. Quick test = first 30 s only.", 300, getHeight() - 46, 480, 20, Justification::centred);
+    g.setColour (dim.brighter (0.5f)); g.setFont (body (11.0f, true));
+    g.drawText ("Full songs take a few minutes. Quick test = first 30 s only.", 458, getHeight() - 46, 320, 20, Justification::centred);
     art::drawStar (g, { (float) getWidth() - 40.0f, 30.0f }, 16.0f, yellow, ink, 0.3f);
 }
 
-void SplitPage::resized()
+void SplitterPage::resized()
 {
     auto r = getLocalBounds().reduced (26, 20).withTrimmedTop (10);
     auto top = r.removeFromTop (34);
@@ -160,11 +163,19 @@ void SplitPage::resized()
     r.removeFromTop (40);          // tape counter
     auto bottom = r.removeFromBottom (44);
     playBtn.setBounds (bottom.removeFromLeft (120)); bottom.removeFromLeft (8);
-    saveAllBtn.setBounds (bottom.removeFromLeft (130));
+    saveAllBtn.setBounds (bottom.removeFromLeft (130)); bottom.removeFromLeft (8);
+    loadBtn.setBounds (bottom.removeFromLeft (160));
     folderBtn.setBounds (bottom.removeFromRight (170));
     r.removeFromBottom (24);
     const int cw = r.getWidth() / 3, ch = r.getHeight() / 2;
     for (int i = 0; i < kNumSlots; ++i)
         tapes[i]->setBounds (r.getX() + (i % 3) * cw, r.getY() + (i / 3) * ch, cw, ch);
+}
+
+void SplitterPage::loadDialog()
+{
+    chooser = std::make_shared<FileChooser> ("Pick a song", File::getSpecialLocation (File::userMusicDirectory), "*.wav;*.mp3;*.flac;*.ogg;*.aif;*.aiff");
+    chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this] (const FileChooser& fc)
+    { auto f = fc.getResult(); if (f.existsAsFile()) proc.loadFileAsync (f); });
 }
 }

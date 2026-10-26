@@ -7,33 +7,23 @@ namespace bony
 BonyProcessor::BonyProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "BeatsByBony", createParameterLayout()),
-      stems (models)
+      apvts (*this, nullptr, "BeatsByBony", createParameterLayout())
 {
     formats.registerBasicFormats();
-    for (auto& a : stemAudible) a = true;
-    for (auto& g : stemGain) g = 1.0f;
 
     for (auto* id : { &ids::grabSens, &ids::grabLow, &ids::grabHigh, &ids::grabGain, &ids::snap, &ids::prevSound, &ids::prevVol, &ids::prevSource })
         apvts.addParameterListener (*id, this);
 
     grab.addChangeListener (this);
-    stems.addChangeListener (this);
-    models.onChange = [this] { sendChangeMessage(); };
     startTimer (100);
 }
 
 BonyProcessor::~BonyProcessor()
 {
     stopTimer();
-    cancelPendingUpdate();
-    models.onChange = nullptr;
     grab.removeChangeListener (this);
-    stems.removeChangeListener (this);
     for (auto* id : { &ids::grabSens, &ids::grabLow, &ids::grabHigh, &ids::grabGain, &ids::snap, &ids::prevSound, &ids::prevVol, &ids::prevSource })
         apvts.removeParameterListener (*id, this);
-    stems.cancel();
-    models.cancelDownload();
 }
 
 bool BonyProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -46,7 +36,6 @@ void BonyProcessor::prepareToPlay (double sr, int block)
 {
     sampleRateHz = sr;
     maxBlock = block;
-    boost.prepare (sr, block);
     synth.prepare (sr);
     captureBuf.setSize (2, (int) (sr * 120.0), false, true, false);   // up to 2 minutes of capture
     captureLen = 0;
@@ -97,14 +86,6 @@ void BonyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         for (int c = 0; c < buffer.getNumChannels(); ++c) pk = juce::jmax (pk, buffer.getMagnitude (c, 0, n));
         inLevel = juce::jmax (pk, inLevel.load() * 0.93f);
     }
-
-    // Boost
-    if (apvts.getRawParameterValue (ids::boostOn)->load() > 0.5f)
-        boost.process (buffer, apvts.getRawParameterValue (ids::boostAmt)->load(),
-                       (int) apvts.getRawParameterValue (ids::boostMode)->load(),
-                       apvts.getRawParameterValue (ids::boostOut)->load());
-    else
-        boost.grMeter = boost.grMeter.load() * 0.9f;
 
     renderPlayback (buffer);
 
@@ -187,34 +168,6 @@ void BonyProcessor::renderPlayback (juce::AudioBuffer<float>& buffer)
         }
         playPos = pos;
     }
-    else // Split: mix the audible stems
-    {
-        if (audioData->stems)
-        {
-            const auto& ss = *audioData->stems;
-            const double step = ss.sampleRate / sr;
-            const int slen = ss.numSamples();
-            double sp = playPos * ss.sampleRate;
-            for (int i = 0; i < n; ++i)
-            {
-                if (sp >= slen - 1) sp = 0.0;
-                const int i0 = (int) sp; const float fr = (float) (sp - i0);
-                float oL = 0.0f, oR = 0.0f;
-                for (int s = 0; s < (int) ss.stems.size() && s < kNumSlots; ++s)
-                {
-                    if (! stemAudible[(size_t) s].load() || ! ss.stems[(size_t) s].present) continue;
-                    const float g = stemGain[(size_t) s].load();
-                    const float* a = ss.stems[(size_t) s].audio.getReadPointer (0);
-                    const float* b = ss.stems[(size_t) s].audio.getReadPointer (1);
-                    oL += (a[i0] + (a[i0 + 1] - a[i0]) * fr) * g;
-                    oR += (b[i0] + (b[i0 + 1] - b[i0]) * fr) * g;
-                }
-                L[i] += oL; R[i] += oR;
-                sp += step;
-            }
-            playPos = sp / ss.sampleRate;
-        }
-    }
     playPosUi = playPos;
 }
 
@@ -228,13 +181,6 @@ void BonyProcessor::parameterChanged (const juce::String& id, float)
 void BonyProcessor::changeListenerCallback (juce::ChangeBroadcaster* src)
 {
     if (src == &grab) previewDirty = true;
-    if (src == &stems) triggerAsyncUpdate();
-    sendChangeMessage();
-}
-
-void BonyProcessor::handleAsyncUpdate()
-{
-    if (stems.getState() == StemEngine::State::Done) adoptStemResult();
     sendChangeMessage();
 }
 
@@ -288,8 +234,6 @@ void BonyProcessor::setSource (SourcePtr s)
 {
     setPlayMode (PlayMode::Off);
     currentSource = std::move (s);
-    currentStems.reset();
-    stems.clearResult();
     grab.clear();
     seekSeconds (0.0);
     if (currentSource) grab.analyse (currentSource, apvts.getRawParameterValue (ids::grabGain)->load());
@@ -343,7 +287,6 @@ void BonyProcessor::rebuildPlayback()
 {
     auto pd = std::make_shared<PlaybackData>();
     pd->source = currentSource;
-    pd->stems = currentStems;
 
     const float sens = apvts.getRawParameterValue (ids::grabSens)->load();
     const int lo = (int) apvts.getRawParameterValue (ids::grabLow)->load();
@@ -373,14 +316,6 @@ void BonyProcessor::rebuildPlayback()
     sendChangeMessage();
 }
 
-void BonyProcessor::adoptStemResult()
-{
-    auto r = stems.getResult();
-    if (r == nullptr || r == currentStems) return;
-    currentStems = r;
-    rebuildPlayback();
-}
-
 // ---------------------------------------------------------------- export
 juce::File BonyProcessor::writeMidiToTemp()
 {
@@ -400,32 +335,6 @@ juce::File BonyProcessor::writeMidiToTemp()
     dir.createDirectory();
     auto f = dir.getChildFile (base + "_grab_" + juce::String (++tempFileCounter) + ".mid");
     return writeMidiFile (active, hostBpm.load(), divs[juce::jlimit (0, 4, snapIdx)], f) ? f : juce::File();
-}
-
-bool BonyProcessor::saveStemWav (int slot, const juce::File& dest)
-{
-    if (currentStems == nullptr || slot < 0 || slot >= (int) currentStems->stems.size()) return false;
-    const auto& st = currentStems->stems[(size_t) slot];
-    if (! st.present) return false;
-    dest.deleteFile();
-    std::unique_ptr<juce::FileOutputStream> os (dest.createOutputStream());
-    if (os == nullptr) return false;
-    juce::WavAudioFormat wav;
-    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (os.get(), currentStems->sampleRate, 2, 24, {}, 0));
-    if (w == nullptr) return false;
-    os.release();                       // writer owns the stream now
-    return w->writeFromAudioSampleBuffer (st.audio, 0, st.audio.getNumSamples());
-}
-
-juce::File BonyProcessor::writeStemToTemp (int slot)
-{
-    if (currentStems == nullptr) return {};
-    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("BeatsByBony");
-    dir.createDirectory();
-    juce::String base = juce::File::createLegalFileName (currentStems->sourceName.upToLastOccurrenceOf (".", false, false));
-    if (base.isEmpty()) base = "BeatsByBony";
-    auto f = dir.getChildFile (base + " - " + juce::String (stemSlotName (slot)).toLowerCase() + ".wav");
-    return saveStemWav (slot, f) ? f : juce::File();
 }
 
 // ---------------------------------------------------------------- state

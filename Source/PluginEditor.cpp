@@ -10,30 +10,7 @@ using namespace theme;
 class BonyEditor::Content : public Component
 {
 public:
-    Content (BonyProcessor& p) : proc (p), grab (p), split (p), boost (p)
-    {
-        addAndMakeVisible (grab); addAndMakeVisible (split); addAndMakeVisible (boost);
-        const char* names[3] = { "GRAB", "SPLIT", "BOOST" };
-        const Colour cols[3] = { cyan, pink, yellow };
-        for (int i = 0; i < 3; ++i)
-        {
-            auto& b = tabs[i];
-            b.setButtonText (names[i]);
-            b.setColour (TextButton::buttonColourId, cols[i].darker (0.55f)); b.setColour (TextButton::buttonOnColourId, cols[i]);
-            b.setColour (TextButton::textColourOffId, cream); b.setColour (TextButton::textColourOnId, ink);
-            b.onClick = [this, i] { show (i); };
-            addAndMakeVisible (b);
-        }
-        show (0);
-    }
-
-    void show (int i)
-    {
-        page = i;
-        grab.setVisible (i == 0); split.setVisible (i == 1); boost.setVisible (i == 2);
-        for (int t = 0; t < 3; ++t) tabs[t].setToggleState (t == i, dontSendNotification);
-        repaint();
-    }
+    Content (BonyProcessor& p) : proc (p), grab (p) { addAndMakeVisible (grab); }
 
     void paint (Graphics& g) override
     {
@@ -56,7 +33,7 @@ public:
         g.setColour (ink); g.fillRect (foot);
         g.setColour (pink); g.fillRect (foot.withHeight (2.0f));
         g.setColour (cream.withAlpha (0.85f)); g.setFont (display (14.0f));
-        g.drawText ("BEATSBYBONY  *  AUDIO > MIDI  *  STEM SPLIT  *  BONY BOOST", foot.reduced (14.0f, 0), Justification::centredLeft);
+        g.drawText ("BEATSBYBONY  *  NOTE GRABBER  *  AUDIO > MIDI", foot.reduced (14.0f, 0), Justification::centredLeft);
         g.setColour (cyan); g.drawText ("v1.0", foot.reduced (14.0f, 0), Justification::centredRight);
     }
 
@@ -69,7 +46,8 @@ public:
         art::drawCheckerStrip (g, Rectangle<float> (0, head.getBottom() - 8.0f, head.getWidth(), 8.0f), pink, ink, 8.0f);
         art::drawLogo (g, Rectangle<float> (26.0f, 26.0f, 520.0f, 74.0f));
         art::drawStar (g, { 562.0f, 20.0f }, 11.0f, yellow, ink, 0.3f);
-        art::drawSticker (g, "OLD SCHOOL MEETS NEW SCHOOL", Rectangle<float> (590.0f, 10.0f, 250.0f, 20.0f), yellow, ink, -1.5f);
+        art::drawSticker (g, "NOTE GRABBER", Rectangle<float> (590.0f, 14.0f, 190.0f, 22.0f), yellow, ink, -1.5f);
+        art::drawSticker (g, "AUDIO > MIDI", Rectangle<float> (612.0f, 48.0f, 150.0f, 20.0f), cyan, ink, 1.5f);
 
     }
 
@@ -78,16 +56,13 @@ public:
         auto r = getLocalBounds();
         r.removeFromBottom (26);
         auto head = r.removeFromTop (104);
-        for (int i = 0; i < 3; ++i) tabs[i].setBounds (576 + i * 104, 40, 100, 44);
-        grab.setBounds (r); split.setBounds (r); boost.setBounds (r);
+        grab.setBounds (r);
     }
 
     float spin = 0.0f;
 private:
     BonyProcessor& proc;
-    GrabPage grab; SplitPage split; BoostPage boost;
-    TextButton tabs[3];
-    int page = 0;
+    GrabPage grab;
     Image bricks, header;
 };
 
@@ -121,8 +96,6 @@ void BonyEditor::resized()
     const float s = (float) getWidth() / (float) designW;
     content->setTransform (AffineTransform::scale (s));
 }
-
-void BonyEditor::showPage (int i) { content->show (i); }
 
 void BonyEditor::filesDropped (const StringArray& files, int, int)
 {

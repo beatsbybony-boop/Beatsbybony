@@ -4,6 +4,9 @@
 #include "../Source/midi/NoteDetector.h"
 #include "../Source/stems/MdxModel.h"
 #include "../Source/stems/OrtRuntime.h"
+#include "../Source/splitter/SplitterCore.h"
+#include "../Source/splitter/SplitterPage.h"
+#include "../Source/ui/BonyLookAndFeel.h"
 using namespace bony;
 #include <iostream>
 
@@ -28,6 +31,45 @@ static std::vector<float> synthMelody (double sr, std::vector<std::array<double,
             x[i] += (float) (0.18 * env * s);
         }
     }
+    return x;
+}
+
+// A harder, more instrument-like test: strong 2nd harmonic, detune, vibrato, plucks, repeats, noise.
+static std::vector<float> synthHard (double sr, std::vector<std::array<double, 3>>& truth)
+{
+    truth.clear();
+    juce::Random rnd (7);
+    // melody: repeated notes, steps, leaps (0.35 .. 0.9 s long)
+    const int mel[] = { 67, 67, 69, 71, 72, 72, 71, 67, 64, 64, 66, 69, 74, 72, 71, 67 };
+    double t = 0.4;
+    for (int m : mel) { const double len = 0.30 + 0.15 * (double) (rnd.nextInt (4)); truth.push_back ({ (double) m, t, len }); t += len + 0.05; }
+    // bass line
+    const int bass[] = { 36, 36, 43, 41, 38, 38, 43, 36 };
+    double bt = 0.4;
+    for (int m : bass) { truth.push_back ({ (double) m, bt, 0.8 }); bt += 0.9; }
+    const double total = std::max (t, bt) + 0.5;
+    std::vector<float> x ((size_t) (sr * total), 0.0f);
+    int k = 0;
+    for (auto& n : truth)
+    {
+        const bool isBass = n[0] < 50;
+        const double cents = ((double) ((k * 37) % 41) - 20.0);                    // up to +-20 cents out of tune
+        const double f = 440.0 * std::pow (2.0, (n[0] - 69 + cents / 100.0) / 12.0);
+        const double vib = (k % 3 == 0) ? 0.012 : 0.0;
+        double ph = 0.0;
+        for (size_t i = (size_t) (n[1] * sr); i < (size_t) ((n[1] + n[2]) * sr) && i < x.size(); ++i)
+        {
+            const double tt = (double) i / sr - n[1];
+            const double fi = f * (1.0 + vib * std::sin (2 * M_PI * 5.5 * tt));
+            ph += 2 * M_PI * fi / sr;
+            const double env = std::min (1.0, tt * 200.0) * std::exp (-tt * (isBass ? 0.9 : 1.6)) * std::min (1.0, (n[2] - tt) * 60.0);
+            const double a[6] = { 0.8, 1.0, 0.5, 0.3, 0.2, 0.1 };                  // 2nd harmonic a bit louder than the fundamental
+            double s = 0; for (int h = 1; h <= 6; ++h) s += a[h - 1] * std::sin (ph * h);
+            x[i] += (float) ((isBass ? 0.22 : 0.16) * env * s);
+        }
+        ++k;
+    }
+    for (auto& v : x) v += (float) (0.004 * (rnd.nextFloat() * 2.0f - 1.0f));      // about -48 dB noise
     return x;
 }
 
@@ -70,84 +112,75 @@ int main (int argc, char** argv)
         if (found < 6) ++failures;
     }
 
-    if (mode == "all" || mode == "boost")
+    if (mode == "all" || mode == "detect2")
     {
-        BonyBoost b; b.prepare (44100.0, 512);
-        juce::AudioBuffer<float> buf (2, 512);
-        float peak = 0; bool bad = false; float inRms = 0, outRms = 0;
-        for (int mode2 = 0; mode2 < 4; ++mode2)
+        std::vector<std::array<double, 3>> truth;
+        auto x = synthHard (44100.0, truth);
+        DetectorSettings st; st.lowestNote = 24; st.highestNote = 96;
+        auto notes = detectNotes (x.data(), x.size(), 44100.0, st, nullptr);
+        if (argc > 2) for (auto& tr : truth) std::cout << "  truth " << tr[0] << " " << tr[1] << " " << tr[1] + tr[2] << "\n";
+        int hit = 0, matchedForTiming = 0; double sErr = 0.0, eErr = 0.0;
+        std::vector<char> used (notes.size(), 0);
+        for (auto& tr : truth)
         {
-            b.reset(); peak = 0; inRms = outRms = 0;
-            for (int blk = 0; blk < 200; ++blk)
-            {
-                for (int i = 0; i < 512; ++i)
-                {
-                    const float t = (float) (blk * 512 + i) / 44100.0f;
-                    const float v = 0.06f * std::sin (6.28f * 110.0f * t) + 0.12f * std::sin (6.28f * 1500.0f * t) + 0.05f * std::sin (6.28f * 7000.0f * t);
-                    buf.setSample (0, i, v); buf.setSample (1, i, v);
-                    inRms += v * v;
-                }
-                b.process (buf, 35.0f, mode2, 0.0f);
-                for (int i = 0; i < 512; ++i) { const float o = buf.getSample (0, i); if (! std::isfinite (o)) bad = true; peak = std::max (peak, std::abs (o)); outRms += o * o; }
-            }
-            std::cout << "BOOST mode " << mode2 << ": peak " << peak << " gain " << 10.0 * std::log10 (outRms / inRms) << " dB\n";
-            if (bad || peak > 1.0f) ++failures;
+            int best = -1; double bd = 1e9;
+            for (size_t i = 0; i < notes.size(); ++i)
+                if (! used[i] && notes[i].midi == (int) tr[0] && notes[i].strength > 0.12f && std::abs (notes[i].start - tr[1]) < 0.2 && std::abs (notes[i].start - tr[1]) < bd) { bd = std::abs (notes[i].start - tr[1]); best = (int) i; }
+            if (best < 0 && argc > 2) { std::cout << "  MISSED midi " << tr[0] << " start " << tr[1] << " len " << tr[2] << "\n"; for (auto& n : notes) if (n.midi == (int) tr[0] && std::abs (n.start - tr[1]) < 0.6) std::cout << "     near: start " << n.start << " len " << n.length << " s " << n.strength << "\n"; }
+            if (best >= 0) { used[(size_t) best] = 1; ++hit; ++matchedForTiming; sErr += std::abs (notes[(size_t) best].start - tr[1]); eErr += std::abs (notes[(size_t) best].start + notes[(size_t) best].length - tr[1] - tr[2]); }
         }
+        int fals = 0;
+        for (size_t i = 0; i < notes.size(); ++i)
+            if (! used[i] && notes[i].strength > 0.25f)
+            {
+                bool real = false;   // overlapping a true note of the same pitch counts as a split, not a false note
+                for (auto& tr : truth) if (notes[i].midi == (int) tr[0] && notes[i].start < tr[1] + tr[2] && notes[i].start + notes[i].length > tr[1]) real = true;
+                if (! real) { ++fals; if (argc > 2) std::cout << "  false midi " << notes[i].midi << " start " << notes[i].start << " len " << notes[i].length << " s " << notes[i].strength << "\n"; }
+            }
+        std::cout << "DETECT2: hit " << hit << "/" << truth.size() << "  false(strong) " << fals << "  mean start err " << (matchedForTiming ? sErr / matchedForTiming : 0.0) * 1000.0
+                  << " ms  mean end err " << (matchedForTiming ? eErr / matchedForTiming : 0.0) * 1000.0 << " ms  total notes " << notes.size() << "\n";
     }
 
-    if (mode == "all" || mode == "ui" || mode == "stems")
+    if (mode == "all" || mode == "ui")
     {
         auto proc = std::make_unique<BonyProcessor>();
         proc->prepareToPlay (44100.0, 512);
+        std::vector<std::array<double, 3>> truth;
+        auto x = synthMelody (44100.0, truth);
+        auto src = std::make_shared<SourceAudio>();
+        src->audio.setSize (2, (int) x.size());
+        for (int c = 0; c < 2; ++c) std::copy (x.begin(), x.end(), src->audio.getWritePointer (c));
+        src->sampleRate = 44100.0; src->name = "demo-loop.wav";
+        proc->setSource (src);
+        for (int i = 0; i < 300 && (proc->grab.isBusy() || proc->grab.size() == 0); ++i) pump (100);
+        std::cout << "UI: grabbed " << proc->grab.size() << " candidate notes\n";
+        auto mid = proc->writeMidiToTemp();
+        std::cout << "UI: midi file " << mid.getFullPathName() << " size " << mid.getSize() << "\n";
 
-        if (mode == "stems")
-        {
-            juce::File wav (argv[2]);
-            proc->loadFileAsync (wav);
-            for (int i = 0; i < 100 && ! proc->getSource(); ++i) pump (100);
-            std::cout << "STEMS: source " << (proc->getSource() ? proc->getSource()->name : "none") << " models " << proc->models.allPresent() << "\n";
-            StemEngine::Options o; o.quickTest = false;
-            proc->stems.start (proc->getSource(), o);
-            while (proc->stems.getState() == StemEngine::State::Working) { pump (500); std::cout << "\r" << proc->stems.statusText() << " " << (int) (proc->stems.progress() * 100) << "%   " << std::flush; }
-            pump (300);
-            std::cout << "\nSTEMS state " << (int) proc->stems.getState() << " err '" << proc->stems.errorText() << "'\n";
-            if (auto st = proc->getStems())
-                for (int i = 0; i < kNumSlots; ++i)
-                {
-                    auto& s = st->stems[(size_t) i];
-                    std::cout << "  " << s.name << " present " << s.present << " rms " << s.audio.getRMSLevel (0, 0, s.audio.getNumSamples()) << "\n";
-                    proc->saveStemWav (i, juce::File (argv[3]).getChildFile (juce::String (i) + ".wav"));
-                }
-        }
-        else
-        {
-            std::vector<std::array<double, 3>> truth;
-            auto x = synthMelody (44100.0, truth);
-            auto src = std::make_shared<SourceAudio>();
-            src->audio.setSize (2, (int) x.size());
-            for (int c = 0; c < 2; ++c) std::copy (x.begin(), x.end(), src->audio.getWritePointer (c));
-            src->sampleRate = 44100.0; src->name = "demo-loop.wav";
-            proc->setSource (src);
-            for (int i = 0; i < 300 && (proc->grab.isBusy() || proc->grab.size() == 0); ++i) pump (100);
-            std::cout << "UI: grabbed " << proc->grab.size() << " candidate notes\n";
-            auto mid = proc->writeMidiToTemp();
-            std::cout << "UI: midi file " << mid.getFullPathName() << " size " << mid.getSize() << "\n";
+        auto editor = std::unique_ptr<juce::AudioProcessorEditor> (proc->createEditor());
+        editor->setSize (BonyEditor::designW, BonyEditor::designH);
+        pump (400);
+        auto img = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        juce::File out (juce::String (argc > 2 ? argv[2] : "/tmp") + "/ui_grab.png");
+        out.deleteFile();
+        juce::FileOutputStream os (out); juce::PNGImageFormat().writeImageToStream (img, os);
+        std::cout << "UI: wrote " << out.getFullPathName() << "\n";
+    }
 
-            auto editor = std::unique_ptr<juce::AudioProcessorEditor> (proc->createEditor());
-            editor->setSize (BonyEditor::designW, BonyEditor::designH);
-            auto* be = dynamic_cast<BonyEditor*> (editor.get());
-            const char* names[] = { "grab", "split", "boost" };
-            proc->apvts.getParameter (ids::boostOn)->setValueNotifyingHost (1.0f);
-            for (int p = 0; p < 3; ++p)
-            {
-                be->showPage (p); pump (400);
-                auto img = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
-                juce::File out (juce::String (argc > 2 ? argv[2] : "/tmp") + "/ui_" + names[p] + ".png");
-                out.deleteFile();
-                juce::FileOutputStream os (out); juce::PNGImageFormat().writeImageToStream (img, os);
-                std::cout << "UI: wrote " << out.getFullPathName() << "\n";
-            }
-        }
+    if (mode == "all" || mode == "splitui")   // the stem splitter page, drawn without needing any models
+    {
+        BonyLookAndFeel laf;
+        juce::LookAndFeel::setDefaultLookAndFeel (&laf);
+        SplitterCore core;
+        SplitterPage page (core);
+        page.setSize (980, 540);
+        pump (300);
+        auto img = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File out (juce::String (argc > 2 ? argv[2] : "/tmp") + "/ui_split.png");
+        out.deleteFile();
+        juce::FileOutputStream os (out); juce::PNGImageFormat().writeImageToStream (img, os);
+        std::cout << "UI: wrote " << out.getFullPathName() << "\n";
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
     std::cout << (failures ? "FAILURES: " : "OK ") << failures << "\n";
     return failures;

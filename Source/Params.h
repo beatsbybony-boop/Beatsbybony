@@ -14,11 +14,6 @@ namespace bony::ids
     inline const juce::String prevSound  { "prevSound" };
     inline const juce::String prevVol    { "prevVol" };
     inline const juce::String prevSource { "prevSource" };  // also hear the original audio
-    // BOOST
-    inline const juce::String boostOn    { "boostOn" };
-    inline const juce::String boostAmt   { "boostAmt" };
-    inline const juce::String boostMode  { "boostMode" };
-    inline const juce::String boostOut   { "boostOut" };
 }
 
 namespace bony
@@ -42,13 +37,6 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
                                                    NormalisableRange<float> (0.0f, 1.0f), 0.7f));
     l.add (std::make_unique<AudioParameterBool> (ParameterID { ids::prevSource, 1 }, "Hear Source", true));
 
-    l.add (std::make_unique<AudioParameterBool> (ParameterID { ids::boostOn, 1 }, "Boost On", false));
-    l.add (std::make_unique<AudioParameterFloat> (ParameterID { ids::boostAmt, 1 }, "Boost",
-                                                   NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f));
-    l.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::boostMode, 1 }, "Boost Mode",
-                                                    StringArray { "A", "B", "C", "D" }, 0));
-    l.add (std::make_unique<AudioParameterFloat> (ParameterID { ids::boostOut, 1 }, "Boost Output",
-                                                   NormalisableRange<float> (-12.0f, 6.0f, 0.1f), 0.0f));
     return l;
 }
 }

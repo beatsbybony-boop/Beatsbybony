@@ -14,6 +14,7 @@ constexpr int kHop = 512;
 constexpr int kBands = 3;
 constexpr int kMaxPoly = 8;
 constexpr int kHarm = 4;
+constexpr int kSub = 6;
 constexpr float kW[kHarm] = { 1.0f, 0.7f, 0.5f, 0.35f };
 
 struct BandFft
@@ -69,6 +70,47 @@ struct BandFft
 
 inline double midiToHz (int m) { return 440.0 * std::pow (2.0, (m - 69) / 12.0); }
 inline int bandFor (int midi) { return midi < 48 ? 0 : (midi < 72 ? 1 : 2); }
+
+
+/** Short-window energy of a pitch (its first two harmonics) around time t: used to place note starts and ends precisely. */
+struct PitchEnvelope
+{
+    const std::vector<float>& x;
+    std::vector<float> win;
+    int W = 1024;
+
+    explicit PitchEnvelope (const std::vector<float>& sig) : x (sig) {}
+    void setWindow (int w)
+    {
+        if (w == W && ! win.empty()) return;
+        W = w; win.resize ((size_t) W);
+        for (int i = 0; i < W; ++i) win[(size_t) i] = (float) (0.5 - 0.5 * std::cos (2.0 * M_PI * i / W));
+    }
+    float at (double f0, long long centre) const
+    {
+        float total = 0.0f;
+        for (int h = 1; h <= 2; ++h)
+        {
+            const double w = 2.0 * M_PI * f0 * h / kRate;
+            if (f0 * h > kRate * 0.45) break;
+            const double c = std::cos (w), sn = std::sin (w);
+            double cr = 1.0, ci = 0.0, re = 0.0, im = 0.0;
+            const long long start = centre - W / 2;
+            for (int i = 0; i < W; ++i)
+            {
+                const long long idx = start + i;
+                if (idx >= 0 && idx < (long long) x.size())
+                {
+                    const double v = (double) x[(size_t) idx] * (double) win[(size_t) i];
+                    re += v * cr; im -= v * ci;
+                }
+                const double nr = cr * c - ci * sn; ci = cr * sn + ci * c; cr = nr;
+            }
+            total += (h == 1 ? 1.0f : 0.7f) * (float) std::sqrt (re * re + im * im);
+        }
+        return total;
+    }
+};
 
 struct Cand { int midi; float s; };
 }
@@ -146,14 +188,21 @@ std::vector<GrabNote> detectNotes (const float* mono, size_t numSamples, double 
             frames[(size_t) f].push_back ({ bestM, bestS });
             globalMax = std::max (globalMax, bestS);
 
-            // take this note's predicted harmonics out of every band so they aren't heard as notes
+            // take this note's harmonics out of every band so they aren't heard as notes again (octaves, fifths...).
+            // Uses what is really measured at each harmonic, capped so a genuine second note sitting on a harmonic survives.
             const double f0 = midiToHz (bestM);
             auto& own = bands[(size_t) bandFor (bestM)];
             const float a1 = own.peak (f0);
-            for (int h = 0; h < kHarm; ++h)
+            static const float cap[kSub] = { 1.0f, 1.25f, 1.0f, 0.8f, 0.6f, 0.45f };
+            for (int h = 0; h < kSub; ++h)
             {
-                const float amount = a1 * kW[h] * 0.9f;
-                for (auto& B : bands) B.subtract (f0 * (h + 1), amount);
+                const double fh = f0 * (h + 1);
+                if (fh > kRate * 0.45) break;
+                for (auto& B : bands)
+                {
+                    const float amount = std::min (B.peak (fh), cap[h] * a1) * 0.97f;
+                    B.subtract (fh, amount);
+                }
             }
         }
     }
@@ -210,6 +259,104 @@ std::vector<GrabNote> detectNotes (const float* mono, size_t numSamples, double 
         }
     }
 
+
+    // ---- tighten starts and ends, and split re-struck notes, with a short-window look at each note's own pitch ----
+    {
+        PitchEnvelope env (x);
+        const int hop = 256;
+        const double dt = (double) hop / kRate;
+        std::vector<float> e;
+        std::vector<GrabNote> refined;
+        refined.reserve (notes.size() + notes.size() / 4);
+
+        for (size_t ni = 0; ni < notes.size(); ++ni)
+        {
+            if (progress && (ni % 64) == 0 && ! progress (0.98f)) return {};
+            const GrabNote n0 = notes[ni];
+            const double f0 = midiToHz (n0.midi);
+            env.setWindow (n0.midi < 48 ? 2048 : 1024);
+            const double smear = 0.5 * (double) bands[(size_t) bandFor (n0.midi)].size / kRate;   // how far the tracker's end lags
+
+            auto curve = [&] (double t0, double t1)
+            {
+                e.clear();
+                for (double t = t0; t <= t1; t += dt) e.push_back (env.at (f0, (long long) (t * kRate)));
+            };
+            // steepest rise (dir = +1) or fall (dir = -1) in the curve; returns the index or -1 if it is not a clear step
+            auto steepest = [&] (int dir, float minFrac) -> int
+            {
+                int best = -1; float bestStep = 0.0f, peak = 0.0f;
+                for (float v : e) peak = std::max (peak, v);
+                const int k = 2;
+                for (int i = k; i + k < (int) e.size(); ++i)
+                {
+                    const float step = dir > 0 ? e[(size_t) (i + k)] - e[(size_t) (i - k)] : e[(size_t) (i - k)] - e[(size_t) (i + k)];
+                    if (step > bestStep) { bestStep = step; best = i; }
+                }
+                return (best >= 0 && bestStep > minFrac * peak) ? best : -1;
+            };
+
+            // 1) start
+            double start = n0.start;
+            {
+                const double t0 = std::max (0.0, n0.start - 0.20);
+                curve (t0, n0.start + 0.20);
+                const int i = steepest (+1, 0.45f);
+                if (i >= 0) start = t0 + i * dt;
+            }
+            const double trackedEnd = std::max (start + 0.05, n0.start + n0.length);
+
+            // 2) re-attacks inside the note (the same key hit again)
+            std::vector<double> onsets { start };
+            {
+                const double t0 = start + 0.05, t1 = trackedEnd + 0.05;
+                if (t1 > t0 + 0.2)
+                {
+                    curve (t0, t1);
+                    float peak = 0.0f; for (float v : e) peak = std::max (peak, v);
+                    const int k = 2;
+                    double lastOnset = start;
+                    for (int i = k; i + k < (int) e.size(); ++i)
+                    {
+                        const float rise = e[(size_t) (i + k)] - e[(size_t) (i - k)];
+                        const bool localMax = rise >= (i > k ? e[(size_t) (i - 1 + k)] - e[(size_t) (i - 1 - k)] : 0.0f)
+                                           && rise >= (i + k + 1 < (int) e.size() ? e[(size_t) (i + 1 + k)] - e[(size_t) (i + 1 - k)] : 0.0f);
+                        const double t = t0 + i * dt;
+                        if (localMax && rise > 0.30f * peak && rise > 0.40f * e[(size_t) (i + k)] && t - lastOnset > 0.10)
+                        { onsets.push_back (t); lastOnset = t; }
+                    }
+                }
+            }
+
+            // 3) the end of each piece
+            for (size_t oi = 0; oi < onsets.size(); ++oi)
+            {
+                const bool last = oi + 1 == onsets.size();
+                const double s0 = onsets[oi];
+                const double defEnd = last ? trackedEnd : onsets[oi + 1];
+                double end = defEnd;
+                const double t0 = std::max (s0 + 0.04, defEnd - (last ? smear + 0.10 : 0.25)), t1 = defEnd + (last ? 0.12 : 0.0);
+                if (t1 > t0 + 0.05)
+                {
+                    curve (t0, t1);
+                    const int i = steepest (-1, 0.45f);
+                    if (i >= 0) end = t0 + i * dt;
+                }
+                GrabNote n = n0;
+                n.start = std::max (0.0, s0);
+                n.length = std::max (0.05, end - n.start);
+                refined.push_back (n);
+            }
+        }
+        notes.swap (refined);
+
+        // same pitch can't overlap itself
+        std::sort (notes.begin(), notes.end(), [] (const GrabNote& a, const GrabNote& b) { return a.midi != b.midi ? a.midi < b.midi : a.start < b.start; });
+        for (size_t i = 0; i + 1 < notes.size(); ++i)
+            if (notes[i].midi == notes[i + 1].midi && notes[i].start + notes[i].length > notes[i + 1].start)
+                notes[i].length = std::max (0.05, notes[i + 1].start - notes[i].start);
+    }
+
     // ---- clean up: drop flicker next to longer neighbouring semitones ----
     std::sort (notes.begin(), notes.end(), [] (const GrabNote& a, const GrabNote& b) { return a.start < b.start; });
     std::vector<char> kill (notes.size(), 0);
@@ -245,6 +392,7 @@ std::vector<GrabNote> detectNotes (const float* mono, size_t numSamples, double 
         lastIdx[(size_t) n.midi] = (int) out.size();
         out.push_back (n);
     }
+
     return out;
 }
 }

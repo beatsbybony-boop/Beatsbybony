@@ -1,14 +1,14 @@
 #pragma once
-#include "../PluginProcessor.h"
-#include "BonyLookAndFeel.h"
+#include "SplitterCore.h"
+#include "../ui/BonyLookAndFeel.h"
 
 namespace bony
 {
-class SplitPage : public juce::Component, private juce::ChangeListener, private juce::Timer
+class SplitterPage : public juce::Component, private juce::ChangeListener, private juce::Timer
 {
 public:
-    explicit SplitPage (BonyProcessor&);
-    ~SplitPage() override;
+    explicit SplitterPage (SplitterCore&);
+    ~SplitterPage() override;
     void paint (juce::Graphics&) override;
     void resized() override;
 private:
@@ -17,12 +17,14 @@ private:
     void timerCallback() override;
     void refresh();
 
-    BonyProcessor& proc;
+    SplitterCore& proc;
     juce::OwnedArray<Tape> tapes;
-    juce::TextButton dlBtn { "DOWNLOAD 290 MB" }, goBtn { "SPLIT IT!" }, playBtn { "PLAY" }, saveAllBtn { "SAVE ALL" }, folderBtn { "MODELS FOLDER" };
+    juce::TextButton dlBtn { "DOWNLOAD 290 MB" }, goBtn { "SPLIT IT!" }, playBtn { "PLAY" }, saveAllBtn { "SAVE ALL" }, loadBtn { "LOAD SONG" }, folderBtn { "MODELS FOLDER" };
     juce::ToggleButton optInstr { "DRUM/BASS/OTHER" }, optVocal { "LEAD/BACKING VOX" }, optQuick { "QUICK TEST 30s" };
     std::shared_ptr<juce::FileChooser> chooser;
     juce::String counterText; float counterValue = 0.0f;
     float spin = 0.0f;
+public:
+    void loadDialog();
 };
 }

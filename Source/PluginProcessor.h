@@ -1,20 +1,16 @@
 #pragma once
 #include "Params.h"
 #include "Types.h"
-#include "dsp/BonyBoost.h"
 #include "dsp/PreviewSynth.h"
 #include "midi/GrabEngine.h"
-#include "stems/ModelManager.h"
-#include "stems/StemEngine.h"
 #include <atomic>
 
 namespace bony
 {
-enum class PlayMode : int { Off = 0, Grab = 1, Split = 2 };
+enum class PlayMode : int { Off = 0, Grab = 1 };
 
 class BonyProcessor : public juce::AudioProcessor,
                       public juce::ChangeBroadcaster,          // UI listens to this for "something changed"
-                      private juce::AsyncUpdater,
                       private juce::Timer,
                       private juce::ChangeListener,
                       private juce::AudioProcessorValueTreeState::Listener
@@ -45,9 +41,6 @@ public:
     // ---- shared state used by the editor ----
     juce::AudioProcessorValueTreeState apvts;
     GrabEngine grab;
-    ModelManager models;
-    StemEngine stems;
-    BonyBoost boost;
 
     // source audio
     SourcePtr getSource() const { return currentSource; }
@@ -73,22 +66,13 @@ public:
     double getHostBpm() const { return hostBpm.load(); }
     void rebuildPlayback();                           // call after anything that changes what is heard
 
-    // stems
-    StemSetPtr getStems() const { return currentStems; }
-    void adoptStemResult();
-    std::array<std::atomic<bool>, kNumSlots> stemAudible;
-    std::array<std::atomic<float>, kNumSlots> stemGain;
-
     // export
     juce::File writeMidiToTemp();                     // returns empty File if nothing to write
-    bool saveStemWav (int slot, const juce::File& dest);
-    juce::File writeStemToTemp (int slot);
 
     // meters
     std::atomic<float> inLevel { 0.0f }, outLevel { 0.0f };
 
 private:
-    void handleAsyncUpdate() override;
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void parameterChanged (const juce::String&, float) override;
@@ -97,7 +81,6 @@ private:
     struct PlaybackData
     {
         SourcePtr source;
-        StemSetPtr stems;
         std::shared_ptr<const PreviewEvents> events;
         double grabLoopSeconds = 0.0;
     };
@@ -106,7 +89,6 @@ private:
 
     // message-thread state
     SourcePtr currentSource;
-    StemSetPtr currentStems;
     juce::AudioFormatManager formats;
     std::vector<std::shared_ptr<const PlaybackData>> graveyard;
     juce::int64 lastGainChangeMs = 0;

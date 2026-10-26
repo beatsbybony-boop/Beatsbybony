@@ -163,7 +163,7 @@ void drawCassette (Graphics& g, Rectangle<float> a, const String& label, Colour 
     // paint splash behind the tape
     drawSplat (g, { a.getX() + w * 0.10f, a.getY() + h * 0.18f }, h * 0.40f, accent, sd);
     drawSplat (g, { a.getRight() - w * 0.08f, a.getY() + h * 0.30f }, h * 0.36f, accB, sd + 5);
-    drawSplat (g, { a.getCentreX() + w * 0.05f, a.getBottom() - h * 0.05f }, h * 0.34f, accC, sd + 9);
+    drawSplat (g, { a.getCentreX() + w * 0.05f, a.getBottom() - h * 0.30f }, h * 0.30f, accC, sd + 9);
 
     // paint runs dripping off the bottom edge
     {

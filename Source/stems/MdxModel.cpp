@@ -2,6 +2,7 @@
 #define ORT_API_MANUAL_INIT
 #include "MdxModel.h"
 #include "../dsp/Fft.h"
+#include "Log.h"
 
 #include <onnxruntime_cxx_api.h>
 #include <algorithm>
@@ -203,11 +204,16 @@ struct DemucsModel::Impl
     {
         options.SetIntraOpNumThreads (std::max (1, threads));
         options.SetInterOpNumThreads (1);
-        options.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
+        // gentle settings: the big transformer model can use a lot of memory with the heavier optimisers
+        options.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_BASIC);
+        options.DisableMemPattern();
+        options.DisableCpuMemArena();
+        logLine ("demucs: loading " + juce::String (path) + " with " + juce::String (threads) + " threads");
         session = std::make_unique<Ort::Session> (env, std::filesystem::u8path (path).c_str(), options);
         Ort::AllocatorWithDefaultOptions alloc;
         inName  = session->GetInputNameAllocated (0, alloc).get();
         outName = session->GetOutputNameAllocated (0, alloc).get();
+        logLine ("demucs: loaded (input '" + juce::String (inName) + "', output '" + juce::String (outName) + "')");
     }
 };
 
@@ -268,6 +274,7 @@ bool DemucsModel::separate (const float* inL, const float* inR, size_t n,
             in[i]                        = (float) (((double) inL[off + i] - mean) / sd);
             in[(size_t) kDemucsSeg + i]  = (float) (((double) inR[off + i] - mean) / sd);
         }
+        logLine ("demucs: chunk " + juce::String ((int) ci + 1) + " of " + juce::String ((int) chunks));
         Ort::Value input = Ort::Value::CreateTensor<float> (mem, in.data(), in.size(), shape, 3);
         auto result = I.session->Run (Ort::RunOptions { nullptr }, inNames, &input, 1, outNames, 1);
         const float* y = result[0].GetTensorData<float>();   // [1, 4, 2, seg]

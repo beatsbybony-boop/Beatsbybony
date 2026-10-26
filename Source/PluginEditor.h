@@ -2,8 +2,6 @@
 #include "PluginProcessor.h"
 #include "ui/BonyLookAndFeel.h"
 #include "ui/GrabPage.h"
-#include "ui/SplitPage.h"
-#include "ui/BoostPage.h"
 
 namespace bony
 {
@@ -20,7 +18,6 @@ public:
     void resized() override;
     bool isInterestedInFileDrag (const juce::StringArray&) override { return true; }
     void filesDropped (const juce::StringArray&, int, int) override;
-    void showPage (int);
 
     static constexpr int designW = 980, designH = 670;
 private:

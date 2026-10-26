@@ -1,4 +1,4 @@
-name: Build BeatsByBony (Windows VST3)
+name: Build BeatsByBony (Windows)
 
 on:
   push:
@@ -14,22 +14,37 @@ jobs:
       - name: Set up the build
         run: cmake -S . -B build -A x64
 
-      - name: Build the plugin
-        run: cmake --build build --config Release --target BeatsByBony_VST3 --parallel
+      - name: Build the Note Grabber plugin and the Stem Splitter program
+        run: cmake --build build --config Release --target BeatsByBony_VST3 BeatsByBonySplitter --parallel
 
-      - name: Collect the finished plugin
+      - name: Collect the finished files
         shell: pwsh
         run: |
           $vst3 = Get-ChildItem -Path build -Recurse -Directory -Filter "BeatsByBony.vst3" | Select-Object -First 1
           if (-not $vst3) { throw "The build did not produce BeatsByBony.vst3" }
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item -Recurse -Force $vst3.FullName dist/BeatsByBony.vst3
-          Copy-Item installer/Install-BeatsByBony.bat dist/
-          Copy-Item README.md dist/
+          New-Item -ItemType Directory -Force -Path dist/NoteGrabber | Out-Null
+          Copy-Item -Recurse -Force $vst3.FullName dist/NoteGrabber/BeatsByBony.vst3
+          Copy-Item installer/Install-NoteGrabber.bat dist/NoteGrabber/
+          Copy-Item README.md dist/NoteGrabber/
+
+          $exe = Get-ChildItem -Path build -Recurse -Filter "BeatsByBony Stem Splitter.exe" | Select-Object -First 1
+          if (-not $exe) { throw "The build did not produce the Stem Splitter .exe" }
+          New-Item -ItemType Directory -Force -Path "dist/StemSplitter" | Out-Null
+          Copy-Item $exe.FullName "dist/StemSplitter/BeatsByBony Stem Splitter.exe"
+          $dll = Join-Path $exe.DirectoryName "onnxruntime.dll"
+          if (-not (Test-Path $dll)) { throw "onnxruntime.dll was not copied next to the .exe" }
+          Copy-Item $dll dist/StemSplitter/
+          Copy-Item README.md dist/StemSplitter/
           Get-ChildItem -Recurse dist | Select-Object FullName
 
-      - name: Upload (this is the file you download)
+      - name: Upload the Note Grabber plugin
         uses: actions/upload-artifact@v4
         with:
-          name: BeatsByBony-Windows-VST3
-          path: dist
+          name: BeatsByBony-NoteGrabber-VST3
+          path: dist/NoteGrabber
+
+      - name: Upload the Stem Splitter program
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeatsByBony-StemSplitter-Windows
+          path: dist/StemSplitter

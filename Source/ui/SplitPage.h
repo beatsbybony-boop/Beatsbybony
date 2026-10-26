@@ -19,7 +19,7 @@ private:
 
     BonyProcessor& proc;
     juce::OwnedArray<Tape> tapes;
-    juce::TextButton dlBtn { "DOWNLOAD 170 MB" }, goBtn { "SPLIT IT!" }, playBtn { "PLAY" }, saveAllBtn { "SAVE ALL" }, folderBtn { "MODELS FOLDER" };
+    juce::TextButton dlBtn { "DOWNLOAD 290 MB" }, goBtn { "SPLIT IT!" }, playBtn { "PLAY" }, saveAllBtn { "SAVE ALL" }, folderBtn { "MODELS FOLDER" };
     juce::ToggleButton optInstr { "DRUM/BASS/OTHER" }, optVocal { "LEAD/BACKING VOX" }, optQuick { "QUICK TEST 30s" };
     std::shared_ptr<juce::FileChooser> chooser;
     juce::String counterText; float counterValue = 0.0f;

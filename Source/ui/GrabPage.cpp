@@ -17,8 +17,9 @@ public:
         art::drawCheckerStrip (g, b.removeFromTop (6.0f), pink, ink, 6.0f);
         g.setColour (ink); g.fillRoundedRectangle (b, 8.0f);
         art::drawCassette (g, Rectangle<float> (10.0f, b.getY() + 4.0f, 86.0f, b.getHeight() - 10.0f), "MIDI", yellow, angle, hot, false, false);
-        tag::Style ts; ts.fillTop = hot ? Colour (0xffffef7a) : Colour (0xfffff3d6); ts.fillBottom = hot ? yellow : cream; ts.shadow = pink.darker (0.2f); ts.smallScale = 1.0f; ts.seed = 31; ts.slant = 0.15f;
-        tag::draw (g, "DRAG MIDI >> FL PIANO ROLL", Rectangle<float> (106.0f, b.getY() + 2.0f, (float) getWidth() - 120.0f, b.getHeight() - 24.0f), ts);
+        tag::GStyle ts; ts.fillTop = hot ? Colour (0xfffff08a) : Colour (0xfffff3d6); ts.fillBottom = hot ? yellow : cream; ts.glow = pink; ts.spray = false;
+        ts.extrudeTop = Colour (0xffe0231d); ts.extrudeBottom = Colour (0xff4a0a2a); ts.seed = 31; ts.thickness = 0.24f; ts.depth = 0.13f; ts.drips = false; ts.spikes = false;
+        tag::drawGraffiti (g, "DRAG MIDI >> FL PIANO ROLL", Rectangle<float> (106.0f, b.getY() - 2.0f, (float) getWidth() - 120.0f, b.getHeight() - 20.0f), ts);
         g.setColour (dim.brighter (0.5f)); g.setFont (body (13.0f, true));
         g.drawText (String (count) + " notes ready  -  grab it and drop it on a pattern", 108, (int) b.getBottom() - 24, getWidth() - 112, 18, Justification::centredLeft);
     }

@@ -12,6 +12,14 @@
 
 namespace bony
 {
+static Ort::Env& sharedOrtEnv()
+{
+    static std::once_flag once;
+    std::call_once (once, [] { Ort::InitApi(); });
+    static Ort::Env* env = new Ort::Env (ORT_LOGGING_LEVEL_WARNING, "BeatsByBony");   // never destroyed on purpose
+    return *env;
+}
+
 struct MdxModel::Impl
 {
     MdxSpec spec;
@@ -22,13 +30,7 @@ struct MdxModel::Impl
     Fft fft;
     std::vector<double> window;
 
-    static Ort::Env& sharedEnv()
-    {
-        static std::once_flag once;
-        std::call_once (once, [] { Ort::InitApi(); });
-        static Ort::Env* env = new Ort::Env (ORT_LOGGING_LEVEL_WARNING, "BeatsByBony");   // never destroyed on purpose
-        return *env;
-    }
+    static Ort::Env& sharedEnv() { return sharedOrtEnv(); }
 
     Impl (const std::string& path, const MdxSpec& s, int threads) : spec (s), env (sharedEnv()), fft (s.nFft)
     {
@@ -182,6 +184,110 @@ bool MdxModel::separate (const float* inL, const float* inR, size_t n,
     }
 
     if (progress) progress (1.0);
+    return true;
+}
+}
+
+namespace bony
+{
+static constexpr int kDemucsSeg = 343980;   // 7.8 s at 44.1 kHz
+
+struct DemucsModel::Impl
+{
+    Ort::Env& env;                       // first: this initialises the ORT API before anything else touches it
+    Ort::SessionOptions options;
+    std::unique_ptr<Ort::Session> session;
+    std::string inName, outName;
+
+    Impl (const std::string& path, int threads) : env (sharedOrtEnv())
+    {
+        options.SetIntraOpNumThreads (std::max (1, threads));
+        options.SetInterOpNumThreads (1);
+        options.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
+        session = std::make_unique<Ort::Session> (env, std::filesystem::u8path (path).c_str(), options);
+        Ort::AllocatorWithDefaultOptions alloc;
+        inName  = session->GetInputNameAllocated (0, alloc).get();
+        outName = session->GetOutputNameAllocated (0, alloc).get();
+    }
+};
+
+DemucsModel::DemucsModel (const std::string& p, int t)
+{
+    try { impl = std::make_unique<Impl> (p, t); }
+    catch (const Ort::Exception& e) { throw std::runtime_error (std::string ("Could not load model: ") + e.what()); }
+}
+DemucsModel::~DemucsModel() = default;
+
+static size_t demucsStride() { return (size_t) kDemucsSeg * 3 / 4; }   // 25 % overlap
+
+size_t DemucsModel::chunkCount (size_t n)
+{
+    size_t c = 1, off = 0;
+    while (off + (size_t) kDemucsSeg < n) { off += demucsStride(); ++c; }
+    return c;
+}
+
+bool DemucsModel::separate (const float* inL, const float* inR, size_t n,
+                            std::vector<float> out[NumStems][2],
+                            const std::function<bool (double)>& progress)
+{
+    auto& I = *impl;
+    // normalise the whole mix like demucs does
+    double mean = 0.0;
+    for (size_t i = 0; i < n; ++i) mean += 0.5 * ((double) inL[i] + (double) inR[i]);
+    mean /= (double) std::max<size_t> (1, n);
+    double var = 0.0;
+    for (size_t i = 0; i < n; ++i) { const double d = 0.5 * ((double) inL[i] + (double) inR[i]) - mean; var += d * d; }
+    const double sd = std::max (1e-8, std::sqrt (var / (double) std::max<size_t> (1, n)));
+
+    std::vector<float> acc[NumStems][2];
+    for (int s = 0; s < NumStems; ++s) for (int c = 0; c < 2; ++c) acc[s][c].assign (n, 0.0f);
+    std::vector<float> wsum (n, 0.0f);
+
+    // triangular weight
+    std::vector<float> w ((size_t) kDemucsSeg);
+    for (int i = 0; i < kDemucsSeg; ++i)
+        w[(size_t) i] = (float) (i < kDemucsSeg / 2 ? i + 1 : kDemucsSeg - i);
+    const float wmax = *std::max_element (w.begin(), w.end());
+    for (auto& v : w) v /= wmax;
+
+    Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu (OrtArenaAllocator, OrtMemTypeDefault);
+    const int64_t shape[3] = { 1, 2, kDemucsSeg };
+    std::vector<float> in ((size_t) 2 * kDemucsSeg);
+    const char* inNames[]  = { I.inName.c_str() };
+    const char* outNames[] = { I.outName.c_str() };
+
+    const size_t chunks = chunkCount (n);
+    for (size_t ci = 0; ci < chunks; ++ci)
+    {
+        const size_t off = ci * demucsStride();
+        const size_t len = std::min ((size_t) kDemucsSeg, n - off);
+        std::fill (in.begin(), in.end(), 0.0f);
+        for (size_t i = 0; i < len; ++i)
+        {
+            in[i]                        = (float) (((double) inL[off + i] - mean) / sd);
+            in[(size_t) kDemucsSeg + i]  = (float) (((double) inR[off + i] - mean) / sd);
+        }
+        Ort::Value input = Ort::Value::CreateTensor<float> (mem, in.data(), in.size(), shape, 3);
+        auto result = I.session->Run (Ort::RunOptions { nullptr }, inNames, &input, 1, outNames, 1);
+        const float* y = result[0].GetTensorData<float>();   // [1, 4, 2, seg]
+        for (int s = 0; s < NumStems; ++s)
+            for (int c = 0; c < 2; ++c)
+            {
+                const float* src = y + ((size_t) s * 2 + (size_t) c) * (size_t) kDemucsSeg;
+                float* dst = acc[s][c].data() + off;
+                for (size_t i = 0; i < len; ++i) dst[i] += src[i] * w[i];
+            }
+        for (size_t i = 0; i < len; ++i) wsum[off + i] += w[i];
+        if (progress && ! progress ((double) (ci + 1) / (double) chunks)) return false;
+    }
+    for (int s = 0; s < NumStems; ++s)
+        for (int c = 0; c < 2; ++c)
+        {
+            out[s][c].resize (n);
+            for (size_t i = 0; i < n; ++i)
+                out[s][c][i] = (float) ((double) acc[s][c][i] / (double) std::max (1e-9f, wsum[i]) * sd);
+        }
     return true;
 }
 }

@@ -41,7 +41,7 @@ If FL says the plugin can't load, install the free *Microsoft Visual C++ Redistr
 - Works best on one instrument at a time (melody, bass, chords). Full mixed songs give rough results; split them first on the SPLIT screen.
 
 ### SPLIT (stems)
-1. The first time, press **DOWNLOAD 170 MB**. The separation models download once into `%APPDATA%\BeatsByBony\models`. (**MODELS FOLDER** opens it.)
+1. The first time, press **DOWNLOAD 290 MB**. The separation models download once into `%APPDATA%\BeatsByBony\models`. (**MODELS FOLDER** opens it.)
 2. Load a song on the GRAB screen (or drop it on the plugin).
 3. Press **SPLIT IT!**. A full song takes several minutes depending on your computer; **QUICK TEST 30s** only does the first 30 seconds so you can try it fast.
 4. Tick **LISTEN** on cassettes to audition them together with **PLAY**, drag a cassette into FL as a WAV, or **SAVE ALL**.

@@ -19,6 +19,23 @@ struct MdxSpec
 constexpr int kMdxHop = 1024;
 constexpr double kMdxSampleRate = 44100.0;
 
+/** Demucs (htdemucs) 4-stem model: raw stereo waveform in, drums/bass/other/vocals out. */
+class DemucsModel
+{
+public:
+    enum Stem { Drums = 0, Bass, Other, Vocals, NumStems };
+    DemucsModel (const std::string& onnxPath, int numThreads);   // throws std::runtime_error
+    ~DemucsModel();
+    /** out[stem][0=L,1=R], each numSamples long. Returns false if cancelled. */
+    bool separate (const float* inL, const float* inR, size_t numSamples,
+                   std::vector<float> out[NumStems][2],
+                   const std::function<bool (double)>& progress);
+    static size_t chunkCount (size_t numSamples);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
 class MdxModel
 {
 public:

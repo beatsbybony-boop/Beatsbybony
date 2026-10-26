@@ -133,7 +133,7 @@ void SplitPage::refresh()
     else if (working) { counterValue = proc.stems.progress(); counterText = proc.stems.statusText() + "  " + String ((int) (counterValue * 100)) + "%"; }
     else if (proc.stems.getState() == StemEngine::State::Failed) { counterValue = 0; counterText = proc.stems.errorText(); }
     else if (proc.models.lastError().isNotEmpty()) { counterValue = 0; counterText = proc.models.lastError(); }
-    else if (! have) { counterValue = 0; counterText = "STEP 1: DOWNLOAD THE MODELS ONCE (ABOUT 170 MB)"; }
+    else if (! have) { counterValue = 0; counterText = "STEP 1: DOWNLOAD THE MODELS ONCE (ABOUT 290 MB)"; }
     else if (! proc.getSource()) { counterValue = 0; counterText = "LOAD A SONG ON THE GRAB PAGE (OR DROP ONE ON THE PLUGIN)"; }
     else if (proc.getStems()) { counterValue = 1.0f; counterText = "DONE - DRAG THE TAPES OUT"; }
     else { counterValue = 0; counterText = "READY: " + proc.getSource()->name; }

@@ -23,9 +23,9 @@ const std::map<char, Glyph>& glyphs()
         auto add = [&] (char c, float w, std::vector<Stroke> s) { m[c] = { w, std::move (s) }; };
 
         add ('A', 0.78f, { L ({ { 0.0f, 1.0f }, { 0.39f, 0.0f }, { 0.78f, 1.0f } }), L ({ { 0.13f, 0.68f }, { 0.65f, 0.68f } }) });
-        add ('B', 0.66f, { L ({ { 0.08f, 0.0f }, { 0.08f, 1.0f } }),
-                            S ({ { 0.08f, 0.0f }, { 0.42f, 0.0f }, { 0.58f, 0.13f }, { 0.58f, 0.34f }, { 0.42f, 0.5f }, { 0.08f, 0.5f } }),
-                            S ({ { 0.08f, 0.5f }, { 0.46f, 0.5f }, { 0.64f, 0.66f }, { 0.64f, 0.85f }, { 0.46f, 1.0f }, { 0.08f, 1.0f } }) });
+        add ('B', 0.74f, { L ({ { 0.08f, 0.0f }, { 0.08f, 1.0f } }),
+                            S ({ { 0.08f, 0.0f }, { 0.46f, 0.0f }, { 0.64f, 0.14f }, { 0.64f, 0.34f }, { 0.46f, 0.5f }, { 0.08f, 0.5f } }),
+                            S ({ { 0.08f, 0.5f }, { 0.52f, 0.5f }, { 0.72f, 0.66f }, { 0.72f, 0.85f }, { 0.52f, 1.0f }, { 0.08f, 1.0f } }) });
         add ('C', 0.66f, { S ({ { 0.62f, 0.14f }, { 0.42f, 0.0f }, { 0.2f, 0.06f }, { 0.07f, 0.3f }, { 0.07f, 0.7f }, { 0.2f, 0.94f }, { 0.42f, 1.0f }, { 0.62f, 0.86f } }) });
         add ('D', 0.68f, { L ({ { 0.08f, 0.0f }, { 0.08f, 1.0f } }),
                             S ({ { 0.08f, 0.0f }, { 0.38f, 0.0f }, { 0.6f, 0.2f }, { 0.64f, 0.5f }, { 0.6f, 0.8f }, { 0.38f, 1.0f }, { 0.08f, 1.0f } }) });
@@ -192,6 +192,184 @@ Rectangle<float> draw (Graphics& g, const String& textIn, Rectangle<float> area,
             g.setColour (st.fillBottom);
             g.fillRoundedRectangle (dx - wd * 0.5f, y0 - 2.0f, wd, len + 1.0f, wd * 0.5f);
             g.fillEllipse (dx - wd * 0.85f, y0 + len - wd * 0.4f, wd * 1.7f, wd * 1.7f);
+        }
+    }
+    return bounds;
+}
+
+Rectangle<float> drawGraffiti (Graphics& g, const String& text, Rectangle<float> area, const GStyle& st)
+{
+    Random rnd (st.seed);
+    const auto& table = glyphs();
+
+    std::vector<Laid> letters;
+    float x = 0.0f;
+    const float gap = -st.overlap;
+    for (auto ch : text)
+    {
+        if (ch == ' ') { x += 0.55f; continue; }
+        const char up = (char) CharacterFunctions::toUpperCase (ch);
+        auto it = table.find (up);
+        if (it == table.end()) continue;
+        const float sc = CharacterFunctions::isLowerCase (ch) ? st.smallScale : 1.0f;
+        letters.push_back ({ up, x, sc, (rnd.nextFloat() - 0.5f) * 0.20f * st.jitter, (rnd.nextFloat() - 0.5f) * 0.10f * st.jitter });
+        x += it->second.width * sc + gap;
+    }
+    if (letters.empty()) return {};
+    x -= gap;
+
+    const float spikePad = st.spikes ? 0.06f : 0.0f;
+    const float pad = st.thickness * 0.5f + st.outlineW * 2.0f + st.inlineW + st.depth * 0.8f + 0.05f + spikePad;
+    const float dripRoom = st.drips ? 0.14f : 0.0f;
+    const float unitsW = x + st.slant + pad * 2.0f, unitsH = 1.0f + pad * 2.0f + dripRoom;
+    const float H = std::min (area.getWidth() / unitsW, area.getHeight() / unitsH);
+    const float ox = area.getCentreX() - (unitsW * H) * 0.5f + pad * H;
+    const float baseY = area.getCentreY() + (unitsH * H) * 0.5f - pad * H - dripRoom * H;
+    const float w = st.thickness * H;
+    const float ow = st.outlineW * H, iw = st.inlineW * H;
+
+    struct Built { Path sharp, spike; };
+    std::vector<Built> built;
+    Path allSharp, allSpike;
+    int idx = 0;
+    for (auto& l : letters)
+    {
+        const auto& gl = table.at (l.c);
+        const float lh = H * l.scale;
+        Built b;
+        int si = 0;
+        for (auto& s0 : gl.strokes)
+        {
+            Stroke s = s0; s.smooth = false;            // angular: straight facets through every control point
+            addStroke (b.sharp, s, lh, lh, 0.0f, 0.0f);
+            if (st.spikes && s.pts.size() >= 2)         // blade tips on the stroke ends
+                for (int end = 0; end < 2; ++end)
+                {
+                    if (((idx * 7 + si * 3 + end * 5 + st.seed) % 5) > 2) continue;
+                    const auto e = (end ? s.pts.back() : s.pts.front()) * lh;
+                    const auto q = (end ? s.pts[s.pts.size() - 2] : s.pts[1]) * lh;
+                    auto d = e - q; const float len = std::sqrt (d.x * d.x + d.y * d.y);
+                    if (len < lh * 0.15f) continue;
+                    d = d / len;
+                    const Point<float> n (-d.y, d.x);
+                    b.spike.startNewSubPath (e + n * (w * 0.50f));
+                    b.spike.lineTo (e + d * (lh * (0.26f + 0.12f * (float) ((idx + si) % 3) * 0.5f)) + n * (w * 0.08f));
+                    b.spike.lineTo (e - n * (w * 0.50f));
+                    b.spike.closeSubPath();
+                }
+            ++si;
+        }
+        const float gw = gl.width * lh;
+        const float skew = (float) ((idx * 5 + st.seed) % 7 - 3) * 0.025f * st.jitter;
+        const AffineTransform t = AffineTransform::translation (-gw * 0.5f, -lh)
+                                      .followedBy (AffineTransform::shear (skew, 0.0f))
+                                      .followedBy (AffineTransform::rotation (l.rot))
+                                      .followedBy (AffineTransform::translation (gw * 0.5f, lh))
+                                      .followedBy (AffineTransform::translation (ox + l.x * H, baseY - lh + l.dy * H))
+                                      .followedBy (AffineTransform::shear (-st.slant, 0.0f).translated (st.slant * baseY, 0.0f));
+        b.sharp.applyTransform (t); b.spike.applyTransform (t);
+        allSharp.addPath (b.sharp); allSpike.addPath (b.spike);
+        built.push_back (std::move (b));
+        ++idx;
+    }
+
+    auto sharpS = [] (float width) { return PathStrokeType (width, PathStrokeType::beveled, PathStrokeType::butt); };
+    auto bounds = allSharp.getBounds().getUnion (allSpike.getBounds());
+    Random r (st.seed * 13 + 5);
+
+    // one layer of the whole word at an offset: strokes plus blade tips, grown by "extra"
+    auto layer = [&] (Point<float> off, Colour c, float extra)
+    {
+        const auto tr = AffineTransform::translation (off.x, off.y);
+        Path sp (allSharp), tp (allSpike); sp.applyTransform (tr); tp.applyTransform (tr);
+        g.setColour (c);
+        g.strokePath (sp, sharpS (w + extra));
+        if (extra > 0.0f) g.strokePath (tp, PathStrokeType (extra, PathStrokeType::beveled, PathStrokeType::butt));
+        g.fillPath (tp);
+    };
+
+    // ---- spray fuzz and speckle ----
+    if (st.spray)
+    {
+        for (int k = 3; k >= 1; --k)
+            layer ({ 0.0f, 0.0f }, st.glow.withAlpha (0.06f), 2.0f * (ow + iw) + H * 0.10f * (float) k);
+        const int dots = (int) built.size() * 22;
+        for (int i = 0; i < dots; ++i)
+        {
+            const auto bb = built[(size_t) r.nextInt ((int) built.size())].sharp.getBounds().expanded (w * 0.9f);
+            g.setColour (st.glow.withAlpha (0.25f + 0.5f * r.nextFloat()));
+            const float d = 0.8f + 1.6f * r.nextFloat();
+            g.fillEllipse (bb.getX() + bb.getWidth() * r.nextFloat(), bb.getY() + bb.getHeight() * r.nextFloat(), d, d);
+        }
+    }
+
+    // ---- 3D block extrusion with a white outer outline, black keyline, then the block colour ----
+    const int steps = juce::jlimit (3, 22, (int) (st.depth * H / 1.8f));
+    const Point<float> dir (0.62f, 0.78f);
+    for (int pass = 0; pass < 3; ++pass)
+        for (int i = steps; i >= 0; --i)
+        {
+            if (pass == 2 && i == steps) continue;                // keep the dark end cap
+            const float f = (float) i / (float) steps;
+            const auto off = dir * (st.depth * H * f);
+            if (pass == 0)      layer (off, st.inlineCol, 2.0f * (ow + iw + ow * 0.8f));
+            else if (pass == 1) layer (off, st.outline,   2.0f * ow * 0.7f + 2.0f);
+            else                layer (off, st.extrudeTop.interpolatedWith (st.extrudeBottom, f), 0.0f);
+        }
+
+    // ---- letters, one by one so they overlap like real throw-ups ----
+    for (auto& b : built)
+    {
+        auto strokeAll = [&] (Colour c, float extra)
+        {
+            g.setColour (c);
+            g.strokePath (b.sharp, sharpS (w + extra));
+            if (extra > 0.0f) g.strokePath (b.spike, PathStrokeType (extra, PathStrokeType::beveled, PathStrokeType::butt));
+        };
+        strokeAll (st.outline, 2.0f * (ow + iw));
+        if (iw > 0.0f) strokeAll (st.inlineCol, 2.0f * iw);
+        g.setGradientFill (ColourGradient::vertical (st.fillTop, bounds.getY(), st.fillBottom, bounds.getBottom()));
+        g.strokePath (b.sharp, sharpS (w)); g.fillPath (b.spike);
+
+        // facet shading, clipped to this letter: dark underside, bright top-left edge
+        Path shape; sharpS (w).createStrokedPath (shape, b.sharp); shape.addPath (b.spike);
+        Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (shape);
+        Path lo (b.sharp), hi (b.sharp);
+        lo.applyTransform (AffineTransform::translation (w * 0.38f, w * 0.48f));
+        hi.applyTransform (AffineTransform::translation (-w * 0.40f, -w * 0.46f));
+        g.setColour (st.fillBottom.darker (0.45f).withAlpha (0.75f)); g.strokePath (lo, sharpS (w * 0.55f));
+        g.setColour (st.fillTop.brighter (0.4f).withAlpha (0.65f));   g.strokePath (hi, sharpS (w * 0.30f));
+    }
+
+    // ---- glints ----
+    if (st.glints)
+        for (size_t i = 0; i < built.size(); i += 2)
+        {
+            const auto bb = built[i].sharp.getBounds();
+            const Point<float> c (bb.getX() + bb.getWidth() * (0.2f + 0.2f * r.nextFloat()), bb.getY() + bb.getHeight() * 0.10f);
+            const float sz = H * 0.12f;
+            Path star;
+            star.startNewSubPath (c.x, c.y - sz); star.quadraticTo (c.x, c.y, c.x + sz, c.y);
+            star.quadraticTo (c.x, c.y, c.x, c.y + sz); star.quadraticTo (c.x, c.y, c.x - sz, c.y);
+            star.quadraticTo (c.x, c.y, c.x, c.y - sz); star.closeSubPath();
+            g.setColour (Colours::white); g.fillPath (star);
+        }
+
+    // ---- paint runs: white drips with round tips, hanging off the extruded edge ----
+    if (st.drips)
+    {
+        const int n = std::max (2, (int) built.size());
+        for (int i = 0; i < n; ++i)
+        {
+            const auto bb = built[(size_t) r.nextInt ((int) built.size())].sharp.getBounds();
+            const float dx = bb.getX() + bb.getWidth() * (0.15f + 0.7f * r.nextFloat()) + st.depth * H * 0.5f;
+            const float y0 = bb.getBottom() + st.depth * H * 0.55f;
+            const float len = H * (0.08f + 0.16f * r.nextFloat() * r.nextFloat() + (i % 3 == 0 ? 0.08f : 0.0f));
+            const float wd = std::max (2.2f, w * (0.10f + 0.07f * r.nextFloat()));
+            g.setColour (st.inlineCol);
+            g.fillRoundedRectangle (dx - wd * 0.5f, y0 - 4.0f, wd, len + 4.0f, wd * 0.5f);
+            g.fillEllipse (dx - wd * 0.8f, y0 + len - wd * 0.6f, wd * 1.6f, wd * 1.9f);
         }
     }
     return bounds;

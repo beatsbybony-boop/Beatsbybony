@@ -149,6 +149,9 @@ void drawCassette (Graphics& g, Rectangle<float> a, const String& label, Colour 
     Graphics::ScopedSaveState ss (g);
     if (empty) g.setOpacity (0.38f);
     const float w = a.getWidth(), h = a.getHeight();
+    const int sd = label.hashCode() & 0xffff;
+    Random rnd (sd + 11);
+    const Colour accB = accent.withRotatedHue (0.13f), accC = accent.withRotatedHue (-0.16f);
 
     if (lit)
         for (int i = 4; i >= 1; --i)
@@ -157,40 +160,106 @@ void drawCassette (Graphics& g, Rectangle<float> a, const String& label, Colour 
             g.fillRoundedRectangle (a.expanded ((float) i * 3.0f), h * 0.1f + (float) i * 3.0f);
         }
 
-    g.setColour (ink); g.fillRoundedRectangle (a.translated (3.0f, 4.0f), h * 0.1f);                 // hard drop shadow
-    g.setGradientFill (ColourGradient::vertical (Colour (0xff3b3548), a.getY(), Colour (0xff1c1826), a.getBottom()));
-    g.fillRoundedRectangle (a, h * 0.1f);
-    g.setColour (ink); g.drawRoundedRectangle (a, h * 0.1f, 2.5f);
-    g.setColour (Colours::white.withAlpha (0.13f)); g.drawRoundedRectangle (a.reduced (2.5f), h * 0.09f, 1.0f);
+    // paint splash behind the tape
+    drawSplat (g, { a.getX() + w * 0.10f, a.getY() + h * 0.18f }, h * 0.40f, accent, sd);
+    drawSplat (g, { a.getRight() - w * 0.08f, a.getY() + h * 0.30f }, h * 0.36f, accB, sd + 5);
+    drawSplat (g, { a.getCentreX() + w * 0.05f, a.getBottom() - h * 0.05f }, h * 0.34f, accC, sd + 9);
 
-    // label sticker
-    auto lab = Rectangle<float> (a.getX() + w * 0.07f, a.getY() + h * 0.09f, w * 0.86f, h * 0.50f);
-    g.setColour (cream); g.fillRoundedRectangle (lab, h * 0.04f);
-    g.setColour (accent); g.fillRoundedRectangle (lab.withHeight (lab.getHeight() * 0.30f), h * 0.04f);
-    g.fillRect (lab.getX(), lab.getY() + lab.getHeight() * 0.15f, lab.getWidth(), lab.getHeight() * 0.15f);
-    g.setColour (ink); g.drawRoundedRectangle (lab, h * 0.04f, 1.6f);
-    g.setColour (ink.withAlpha (0.35f));
-    for (int i = 0; i < 2; ++i)
-        g.drawLine (lab.getX() + w * 0.04f, lab.getBottom() - h * (0.05f + 0.045f * (float) i), lab.getRight() - w * 0.04f, lab.getBottom() - h * (0.05f + 0.045f * (float) i), 1.0f);
+    // paint runs dripping off the bottom edge
+    {
+        const Colour cols[] = { accent, accB, accC, accent.brighter (0.3f), accB };
+        const int nd = 5;
+        for (int i = 0; i < nd; ++i)
+        {
+            const float dx = a.getX() + w * (0.10f + 0.80f * ((float) i + 0.5f * rnd.nextFloat()) / (float) nd);
+            const float len = h * (0.05f + 0.08f * rnd.nextFloat());
+            const float wd = std::max (3.0f, h * (0.045f + 0.025f * rnd.nextFloat()));
+            const float y0 = a.getBottom() - 4.0f;
+            g.setColour (ink);
+            g.fillRoundedRectangle (dx - wd * 0.5f - 1.6f, y0, wd + 3.2f, len + 3.0f, wd * 0.5f);
+            g.fillEllipse (dx - wd * 0.85f - 1.6f, y0 + len - wd * 0.5f, wd * 1.7f + 3.2f, wd * 1.9f + 3.2f);
+            g.setColour (cols[i % 5]);
+            g.fillRoundedRectangle (dx - wd * 0.5f, y0, wd, len + 2.0f, wd * 0.5f);
+            g.fillEllipse (dx - wd * 0.85f, y0 + len - wd * 0.5f, wd * 1.7f, wd * 1.9f);
+            g.setColour (Colours::white.withAlpha (0.55f)); g.fillRect (dx - wd * 0.28f, y0, wd * 0.18f, len * 0.7f);
+        }
+    }
 
-    auto textArea = lab.withTrimmedTop (lab.getHeight() * 0.30f).reduced (w * 0.05f, lab.getHeight() * 0.04f).withTrimmedBottom (lab.getHeight() * 0.10f);
-    tag::drawSimple (g, label, textArea, ink.withAlpha (0.92f), Colours::transparentBlack, 0.15f);
+    // black spray overspray around the shell (soft halo + speckle)
+    for (int i = 4; i >= 1; --i)
+    {
+        g.setColour (ink.withAlpha (0.10f));
+        g.fillRoundedRectangle (a.expanded ((float) i * 1.6f), h * 0.1f + (float) i * 1.6f);
+    }
+    for (int i = 0; i < 46; ++i)
+    {
+        const float t = rnd.nextFloat() * 4.0f;
+        Point<float> p = t < 1.0f ? Point<float> (a.getX() + w * t, a.getY()) : t < 2.0f ? Point<float> (a.getRight(), a.getY() + h * (t - 1.0f))
+                       : t < 3.0f ? Point<float> (a.getRight() - w * (t - 2.0f), a.getBottom()) : Point<float> (a.getX(), a.getBottom() - h * (t - 3.0f));
+        const float d = 1.0f + 2.2f * rnd.nextFloat(), rr = 2.0f + 9.0f * rnd.nextFloat() * rnd.nextFloat();
+        const float ang = rnd.nextFloat() * MathConstants<float>::twoPi;
+        g.setColour (ink.withAlpha (0.35f + 0.5f * rnd.nextFloat()));
+        g.fillEllipse (p.x + std::cos (ang) * rr, p.y + std::sin (ang) * rr, d, d);
+    }
 
-    // tape window with reels
-    auto win = Rectangle<float> (a.getX() + w * 0.20f, a.getY() + h * 0.62f, w * 0.60f, h * 0.24f);
-    g.setColour (Colour (0xff0e0a14)); g.fillRoundedRectangle (win, win.getHeight() * 0.5f);
-    g.setColour (Colour (0xff6b5a7d)); g.drawRoundedRectangle (win, win.getHeight() * 0.5f, 1.5f);
-    const float rr = win.getHeight() * 0.44f;
-    drawReel (g, { win.getX() + rr * 1.25f, win.getCentreY() }, rr, angle);
-    drawReel (g, { win.getRight() - rr * 1.25f, win.getCentreY() }, rr, -angle);
-    g.setColour (Colour (0xff4a3426));
-    g.fillRect (win.getX() + rr * 1.25f + rr * 0.6f, win.getCentreY() - 1.0f, win.getWidth() - rr * 2.5f - rr * 1.2f, 2.0f);
+    // plastic shell, hard black outline
+    g.setColour (ink); g.fillRoundedRectangle (a.translated (3.0f, 4.0f), h * 0.08f);
+    g.setGradientFill (ColourGradient::vertical (Colour (0xffd9e2ee).interpolatedWith (accent, 0.12f), a.getY(), Colour (0xff98a4b8).interpolatedWith (accent, 0.12f), a.getBottom()));
+    g.fillRoundedRectangle (a, h * 0.08f);
+    g.setColour (ink); g.drawRoundedRectangle (a, h * 0.08f, 3.0f);
+    g.setColour (Colours::white.withAlpha (0.35f)); g.drawRoundedRectangle (a.reduced (3.5f), h * 0.07f, 1.0f);
+
+    // label band: sprayed colour with wild-style lettering
+    auto lab = Rectangle<float> (a.getX() + w * 0.07f, a.getY() + h * 0.07f, w * 0.86f, h * 0.43f);
+    g.setColour (ink); g.fillRoundedRectangle (lab.translated (2.0f, 2.5f), h * 0.03f);
+    g.setGradientFill (ColourGradient::vertical (accent.brighter (0.55f), lab.getY(), accent.darker (0.2f), lab.getBottom()));
+    g.fillRoundedRectangle (lab, h * 0.03f);
+    {
+        Graphics::ScopedSaveState clip (g);
+        Path lp; lp.addRoundedRectangle (lab, h * 0.03f); g.reduceClipRegion (lp);
+        g.setColour (Colours::white.withAlpha (0.10f));   // halftone dots
+        for (float yy = lab.getY() + 3.0f; yy < lab.getBottom(); yy += 6.0f)
+            for (float xx = lab.getX() + ((int) (yy / 6.0f) % 2 ? 3.0f : 0.0f); xx < lab.getRight(); xx += 6.0f)
+                g.fillEllipse (xx, yy, 2.2f, 2.2f);
+        g.setColour (ink.withAlpha (0.75f));              // marker lines
+        g.drawLine (lab.getX() + 4.0f, lab.getBottom() - h * 0.05f, lab.getRight() - 4.0f, lab.getBottom() - h * 0.05f, 1.4f);
+    }
+    g.setColour (ink); g.drawRoundedRectangle (lab, h * 0.03f, 2.0f);
+    {
+        tag::GStyle ls; ls.fillTop = Colour (0xfffff6b0); ls.fillBottom = Colour (0xffffb000); ls.glow = Colours::white; ls.spray = false;
+        ls.extrudeTop = Colour (0xff6d6b78); ls.extrudeBottom = ink; ls.thickness = 0.19f; ls.outlineW = 0.055f; ls.inlineW = 0.0f; ls.overlap = 0.0f;
+        ls.depth = 0.10f; ls.drips = false; ls.glints = false; ls.spikes = false; ls.jitter = 0.4f; ls.seed = label.length() * 3;
+        tag::drawGraffiti (g, label, lab.reduced (w * 0.025f, lab.getHeight() * 0.06f), ls);
+    }
+
+    // tape window with gear reels (white teeth in a black ring, like the stencils)
+    auto win = Rectangle<float> (a.getX() + w * 0.18f, a.getY() + h * 0.53f, w * 0.64f, h * 0.22f);
+    g.setColour (ink); g.fillRoundedRectangle (win, win.getHeight() * 0.5f);
+    g.setColour (Colour (0xff3a3446)); g.drawRoundedRectangle (win.reduced (1.0f), win.getHeight() * 0.5f, 1.2f);
+    const float rr = win.getHeight() * 0.42f;
+    drawReel (g, { win.getX() + rr * 1.35f, win.getCentreY() }, rr, angle);
+    drawReel (g, { win.getRight() - rr * 1.35f, win.getCentreY() }, rr, -angle);
+    g.setColour (Colours::white.withAlpha (0.9f));   // little tape-position window in the middle
+    g.fillRoundedRectangle (win.getCentreX() - rr * 0.55f, win.getCentreY() - rr * 0.45f, rr * 1.1f, rr * 0.9f, 2.0f);
+    g.setColour (ink); g.fillRect (win.getCentreX() - rr * 0.55f, win.getCentreY() - rr * 0.45f, rr * 0.55f, rr * 0.9f);
+
+    // bottom trapezoid with the four holes
+    {
+        Path tz;
+        const float y0 = a.getY() + h * 0.79f, y1 = a.getBottom() - h * 0.04f;
+        tz.startNewSubPath (a.getX() + w * 0.20f, y0); tz.lineTo (a.getRight() - w * 0.20f, y0);
+        tz.lineTo (a.getRight() - w * 0.14f, y1);      tz.lineTo (a.getX() + w * 0.14f, y1); tz.closeSubPath();
+        g.setColour (Colour (0xffb8c2d2).interpolatedWith (accent, 0.15f)); g.fillPath (tz);
+        g.setColour (ink); g.strokePath (tz, PathStrokeType (2.0f));
+        for (float f : { 0.26f, 0.38f, 0.62f, 0.74f })
+            g.fillEllipse (a.getX() + w * f - h * 0.026f, (y0 + y1) * 0.5f - h * 0.026f, h * 0.052f, h * 0.052f);
+    }
 
     // screws
-    g.setColour (Colour (0xff8d86a0));
-    for (auto p : { Point<float> (a.getX() + w * 0.045f, a.getY() + h * 0.07f), Point<float> (a.getRight() - w * 0.045f, a.getY() + h * 0.07f),
-                    Point<float> (a.getX() + w * 0.045f, a.getBottom() - h * 0.07f), Point<float> (a.getRight() - w * 0.045f, a.getBottom() - h * 0.07f) })
-        g.fillEllipse (p.x - 2.5f, p.y - 2.5f, 5.0f, 5.0f);
+    g.setColour (ink);
+    for (auto p : { Point<float> (a.getX() + w * 0.04f, a.getY() + h * 0.06f), Point<float> (a.getRight() - w * 0.04f, a.getY() + h * 0.06f),
+                    Point<float> (a.getX() + w * 0.04f, a.getBottom() - h * 0.06f), Point<float> (a.getRight() - w * 0.04f, a.getBottom() - h * 0.06f) })
+        g.fillEllipse (p.x - 2.2f, p.y - 2.2f, 4.4f, 4.4f);
 
     if (withCrown)
         drawCrown (g, Rectangle<float> (a.getCentreX() - w * 0.17f, a.getY() - h * 0.34f, w * 0.34f, h * 0.38f), lit);
@@ -269,30 +338,22 @@ void drawGraffitiText (Graphics& g, const String& text, Rectangle<float> area, c
 
 void drawLogo (Graphics& g, Rectangle<float> a)
 {
-    // "Beats" (pink)  "By" (cyan)  "Bony" (yellow), hand-drawn marker tag with a crown
+    // "BEATS" (pink)  "BY" (cyan)  "BONY" (gold): wild-style throw-up lettering with 3D blocks and a crown
     const float W = a.getWidth();
-    auto beats = Rectangle<float> (a.getX(), a.getY(), W * 0.42f, a.getHeight());
-    auto by    = Rectangle<float> (beats.getRight() - 16.0f, a.getY() + a.getHeight() * 0.18f, W * 0.17f, a.getHeight() * 0.82f);
-    auto bony  = Rectangle<float> (by.getRight() - 18.0f, a.getY(), W * 0.43f, a.getHeight());
+    auto beats = Rectangle<float> (a.getX(), a.getY(), W * 0.44f, a.getHeight());
+    auto by    = Rectangle<float> (beats.getRight() - 26.0f, a.getY() + a.getHeight() * 0.22f, W * 0.15f, a.getHeight() * 0.78f);
+    auto bony  = Rectangle<float> (by.getRight() - 26.0f, a.getY(), W * 0.44f, a.getHeight());
 
-    tag::Style s1; s1.fillTop = Colour (0xffff9ad0); s1.fillBottom = pink; s1.shadow = violet.darker (0.2f);
-    s1.smallScale = 0.8f; s1.seed = 4; s1.drips = true; s1.thickness = 0.32f; s1.outlineWidth = 0.12f; s1.rimWidth = 0.04f; s1.shadowDx = 0.08f; s1.shadowDy = 0.1f;
-    tag::Style s2 = s1; s2.fillTop = Colour (0xffb5f7ff); s2.fillBottom = cyan; s2.drips = false; s2.smallScale = 0.85f; s2.seed = 9;
-    tag::Style s3 = s1; s3.fillTop = Colour (0xffffef7a); s3.fillBottom = Colour (0xffffa000); s3.shadow = Colour (0xff6a1fd0); s3.seed = 13;
+    tag::GStyle s1; s1.fillTop = Colour (0xffffa8dc); s1.fillBottom = pink; s1.glow = Colours::white;
+    s1.thickness = 0.21f; s1.seed = 4; s1.depth = 0.16f; s1.overlap = 0.03f; s1.slant = 0.30f; s1.jitter = 1.0f;
+    tag::GStyle s2 = s1; s2.fillTop = Colour (0xffd4fbff); s2.fillBottom = cyan; s2.seed = 8; s2.drips = false;
+    tag::GStyle s3 = s1; s3.fillTop = Colour (0xfffff08a); s3.fillBottom = Colour (0xffff9f00); s3.seed = 15;
 
-    tag::draw (g, "Beats", beats, s1);
-    tag::draw (g, "By", by, s2);
-    auto used = tag::draw (g, "Bony", bony, s3);
+    tag::drawGraffiti (g, "BEATS", beats, s1);
+    tag::drawGraffiti (g, "BY", by, s2);
+    auto used = tag::drawGraffiti (g, "BONY", bony, s3);
 
-    drawCrown (g, Rectangle<float> (used.getX() - a.getHeight() * 0.10f, a.getY() - a.getHeight() * 0.30f, a.getHeight() * 0.62f, a.getHeight() * 0.48f), true);
-    // spray underline with an arrow
-    Path sw;
-    sw.startNewSubPath (a.getX() + 4.0f, a.getBottom () + 1.0f);
-    sw.quadraticTo (a.getCentreX(), a.getBottom () + 9.0f, a.getRight() - 14.0f, a.getBottom() - 4.0f);
-    g.setColour (ink);   g.strokePath (sw, PathStrokeType (7.0f, PathStrokeType::curved, PathStrokeType::rounded));
-    g.setColour (lime);  g.strokePath (sw, PathStrokeType (3.5f, PathStrokeType::curved, PathStrokeType::rounded));
-    Path head; head.addTriangle (a.getRight() - 4.0f, a.getBottom() - 10.0f, a.getRight() - 20.0f, a.getBottom() - 14.0f, a.getRight() - 14.0f, a.getBottom() + 1.0f);
-    g.setColour (ink); g.strokePath (head, PathStrokeType (4.0f, PathStrokeType::mitered)); g.setColour (lime); g.fillPath (head);
+    drawCrown (g, Rectangle<float> (used.getX() - a.getHeight() * 0.05f, used.getY() - a.getHeight() * 0.34f, a.getHeight() * 0.56f, a.getHeight() * 0.44f), true);
 }
 
 // ------------------------------------------------------------------ small decorations
@@ -409,9 +470,9 @@ void drawDeck (Graphics& g, Rectangle<float> a, const String& title, Colour acce
     drawNeonFrame (g, a, accent, 10.0f, 2.0f);
     if (title.isNotEmpty())
     {
-        tag::Style ts; ts.fillTop = accent.brighter (0.5f); ts.fillBottom = accent; ts.shadow = ink; ts.thickness = 0.2f; ts.smallScale = 1.0f; ts.drips = true;
-        ts.seed = title.length() * 5; ts.slant = 0.2f; ts.shadowDx = 0.05f; ts.shadowDy = 0.07f;
-        tag::draw (g, title, Rectangle<float> (a.getX() + 14.0f, a.getY() - 8.0f, 20.0f + (float) title.length() * 15.0f, 28.0f), ts);
+        tag::GStyle ts; ts.fillTop = accent.brighter (0.6f); ts.fillBottom = accent; ts.glow = accent; ts.extrudeTop = accent.darker (0.5f); ts.extrudeBottom = ink;
+        ts.seed = title.length() * 5; ts.thickness = 0.21f; ts.depth = 0.09f; ts.drips = true; ts.spray = false; ts.glints = false; ts.spikes = false; ts.overlap = 0.0f; ts.inlineW = 0.02f;
+        tag::drawGraffiti (g, title, Rectangle<float> (a.getX() + 12.0f, a.getY() - 14.0f, 30.0f + (float) title.length() * 22.0f, 40.0f), ts);
     }
 }
 

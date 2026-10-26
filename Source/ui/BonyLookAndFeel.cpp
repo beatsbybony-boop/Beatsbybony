@@ -102,6 +102,15 @@ void BonyLookAndFeel::drawButtonText (Graphics& g, TextButton& b, bool, bool dow
     auto r = b.getLocalBounds().reduced (10, 8).toFloat();
     if (down) r.translate (2.0f, 2.0f);
     const bool dark = col.getBrightness() > 0.6f;
+    if (b.getHeight() >= 30)   // big buttons get real graffiti lettering
+    {
+        tag::GStyle gs; gs.fillTop = col.brighter (0.35f); gs.fillBottom = col; gs.outline = ink; gs.inlineCol = ink.withAlpha (0.0f);
+        gs.extrudeTop = ink.withAlpha (0.55f); gs.extrudeBottom = ink.withAlpha (0.55f);
+        gs.thickness = 0.2f; gs.outlineW = 0.06f; gs.inlineW = 0.0f; gs.depth = 0.05f; gs.overlap = 0.0f; gs.slant = 0.22f; gs.jitter = 0.5f;
+        gs.spikes = false; gs.drips = false; gs.glints = false; gs.spray = false; gs.seed = b.getButtonText().length();
+        tag::drawGraffiti (g, b.getButtonText(), r.expanded (4.0f, 2.0f), gs);
+        return;
+    }
     tag::drawSimple (g, b.getButtonText(), r, col, dark ? ink : Colours::transparentBlack, dark ? 0.17f : 0.15f);
 }
 

@@ -10,16 +10,17 @@ struct ModelInfo
     const char* id;
     const char* what;            // plain-English use
     const char* url;
-    juce::int64 bytes;
+    juce::int64 bytes;           // exact size, or 0 when only approxBytes is known
+    juce::int64 approxBytes;
     const char* sha256;
     MdxSpec spec;
 };
 
-/** The separation models are downloaded once (about 170 MB) into the user's AppData folder. */
+/** The separation models are downloaded once (about 290 MB) into the user's AppData folder. */
 class ModelManager : private juce::Thread
 {
 public:
-    enum Which { Vocals = 0, Drums, Bass, LeadSplit, NumModels };
+    enum Which { Vocals = 0, Demucs, LeadSplit, NumModels };
 
     ModelManager() : juce::Thread ("BeatsByBony model download") {}
     ~ModelManager() override { stopThread (4000); }

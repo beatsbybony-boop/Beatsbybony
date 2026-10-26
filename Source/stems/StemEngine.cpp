@@ -48,12 +48,11 @@ void StemEngine::run()
         const size_t n = L.size();
         if (threadShouldExit()) { state = State::Idle; setStatus ("Cancelled"); return; }
 
-        // ---- work plan for the progress bar ----
-        std::vector<ModelManager::Which> plan { ModelManager::Vocals };
-        if (o.instruments) { plan.push_back (ModelManager::Drums); plan.push_back (ModelManager::Bass); }
-        if (o.vocalSplit)  plan.push_back (ModelManager::LeadSplit);
-        double totalChunks = 0.0;
-        for (auto w : plan) totalChunks += (double) MdxModel::chunkCount (n, ModelManager::info (w).spec);
+        // ---- work plan for the progress bar (a Demucs call costs about 8 MDX calls) ----
+        const double demCost = 8.0;
+        double totalChunks = (double) MdxModel::chunkCount (n, ModelManager::info (ModelManager::Vocals).spec);
+        if (o.instruments) totalChunks += demCost * (double) DemucsModel::chunkCount (n);
+        if (o.vocalSplit)  totalChunks += (double) MdxModel::chunkCount (n, ModelManager::info (ModelManager::LeadSplit).spec);
         double doneChunks = 0.0;
 
         const int threads = juce::jlimit (1, 8, (int) std::thread::hardware_concurrency() / 2);
@@ -86,8 +85,31 @@ void StemEngine::run()
 
         if (o.instruments)
         {
-            if (! runModel (ModelManager::Drums, L, R, dL, dR, "drums")) { state = State::Idle; setStatus ("Cancelled"); return; }
-            if (! runModel (ModelManager::Bass,  L, R, bL, bR, "bass"))  { state = State::Idle; setStatus ("Cancelled"); return; }
+            setStatus ("Loading drums, bass and music finder...");
+            try
+            {
+                DemucsModel dem (models.fileFor (ModelManager::Demucs).getFullPathName().toStdString(), threads);
+                setStatus ("Splitting: drums, bass and music");
+                const double mine = demCost * (double) DemucsModel::chunkCount (n);
+                std::vector<float> st[DemucsModel::NumStems][2];
+                const bool ok = dem.separate (L.data(), R.data(), n, st, [&] (double p)
+                {
+                    prog = (float) ((doneChunks + p * mine) / totalChunks);
+                    return ! threadShouldExit();
+                });
+                if (! ok) { state = State::Idle; setStatus ("Cancelled"); return; }
+                doneChunks += mine;
+                dL = st[DemucsModel::Drums][0]; dR = st[DemucsModel::Drums][1];
+                bL = st[DemucsModel::Bass][0];  bR = st[DemucsModel::Bass][1];
+            }
+            catch (const std::exception& e)
+            {
+                // a damaged download: remove it so the next try fetches it again
+                models.fileFor (ModelManager::Demucs).deleteFile();
+                fail (juce::String ("The Demucs model could not be used (") + e.what() + "). Press DOWNLOAD again.");
+                return;
+            }
+            // everything the vocal finder, drums and bass did not take is "other"
             std::vector<float> oL (n), oR (n);
             for (size_t i = 0; i < n; ++i) { oL[i] = L[i] - vL[i] - dL[i] - bL[i]; oR[i] = R[i] - vR[i] - dR[i] - bR[i]; }
             out->stems[kDrums].audio = toBuffer (dL, dR);

@@ -2,6 +2,9 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/midi/NoteDetector.h"
+#include "../Source/stems/MdxModel.h"
+#include "../Source/stems/OrtRuntime.h"
+using namespace bony;
 #include <iostream>
 
 using namespace bony;
@@ -34,6 +37,22 @@ int main (int argc, char** argv)
     const juce::String mode = argc > 1 ? argv[1] : "all";
     int failures = 0;
 
+    if (mode == "demucs")   // plumbing check with a stand-in model: stem k must equal gain[k] * input
+    {
+        { std::string e; initOnnxRuntime ("", e); }
+        const size_t n = 44100 * 20;
+        std::vector<float> L (n), R (n);
+        for (size_t i = 0; i < n; ++i) { L[i] = 0.5f * std::sin (0.01f * (float) i); R[i] = 0.3f * std::sin (0.017f * (float) i); }
+        DemucsModel m (argv[2], 2);
+        std::vector<float> out[DemucsModel::NumStems][2];
+        const bool ok = m.separate (L.data(), R.data(), n, out, [] (double) { return true; });
+        const float gains[4] = { 0.1f, 0.2f, 0.3f, 0.4f };
+        double worst = 0.0;
+        for (int k = 0; k < 4; ++k) for (size_t i = 0; i < n; ++i)
+            worst = std::max (worst, (double) std::abs (out[k][0][i] - gains[k] * L[i]) + std::abs (out[k][1][i] - gains[k] * R[i]));
+        std::cout << "DEMUCS ok=" << ok << " chunks=" << DemucsModel::chunkCount (n) << " worst error " << worst << (worst < 1e-3 ? " PASS" : " FAIL") << "\n";
+        return worst < 1e-3 ? 0 : 1;
+    }
     if (mode == "all" || mode == "detect")
     {
         std::vector<std::array<double, 3>> truth;

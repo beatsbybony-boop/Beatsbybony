@@ -24,6 +24,27 @@ namespace bony::tag
     /** Draws text (A-Z, 0-9 and a few symbols) fitted into the area. Returns the bounds actually used. */
     juce::Rectangle<float> draw (juce::Graphics&, const juce::String& text, juce::Rectangle<float> area, const Style&);
 
+    /** Big wild-style graffiti lettering: fat chiselled letters that overlap, a deep 3D block extrusion,
+        black + white outlines, spray glow, spikes, glints and drips. */
+    struct GStyle
+    {
+        juce::Colour fillTop { 0xffffe14d }, fillBottom { 0xffff7b1c };
+        juce::Colour inlineCol { 0xffffffff }, outline { 0xff0b0612 };
+        juce::Colour extrudeTop { 0xff8d8c96 }, extrudeBottom { 0xff2a2830 };
+        juce::Colour glow { 0xffff2e93 };
+        float thickness = 0.22f;      // stroke width relative to letter height
+        float outlineW  = 0.06f;
+        float inlineW   = 0.03f;
+        float depth     = 0.14f;      // length of the 3D extrusion relative to letter height
+        float slant     = 0.28f;
+        float overlap   = 0.03f;      // letters overlap by this much (relative to height)
+        float jitter    = 1.0f;
+        float smallScale = 1.0f;
+        bool  spikes = true, drips = true, glints = true, spray = true;
+        int   seed = 1;
+    };
+    juce::Rectangle<float> drawGraffiti (juce::Graphics&, const juce::String& text, juce::Rectangle<float> area, const GStyle&);
+
     /** Quick helper for small labels: thin single-colour marker lettering. */
     void drawSimple (juce::Graphics&, const juce::String& text, juce::Rectangle<float> area, juce::Colour fill, juce::Colour outline, float thickness = 0.16f);
 }

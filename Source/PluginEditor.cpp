@@ -67,7 +67,7 @@ public:
         g.setGradientFill (ColourGradient::vertical (Colour (0xdd1b0a2e), 0, Colour (0xee0b0612), head.getHeight()));
         g.fillRect (head);
         art::drawCheckerStrip (g, Rectangle<float> (0, head.getBottom() - 8.0f, head.getWidth(), 8.0f), pink, ink, 8.0f);
-        art::drawLogo (g, Rectangle<float> (26.0f, 30.0f, 520.0f, 60.0f));
+        art::drawLogo (g, Rectangle<float> (26.0f, 26.0f, 520.0f, 74.0f));
         art::drawStar (g, { 562.0f, 20.0f }, 11.0f, yellow, ink, 0.3f);
         art::drawSticker (g, "OLD SCHOOL MEETS NEW SCHOOL", Rectangle<float> (590.0f, 10.0f, 250.0f, 20.0f), yellow, ink, -1.5f);
 

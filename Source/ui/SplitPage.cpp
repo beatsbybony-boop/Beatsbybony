@@ -144,15 +144,15 @@ void SplitPage::refresh()
 void SplitPage::paint (Graphics& g)
 {
     art::drawDeck (g, getLocalBounds().reduced (12, 8).toFloat().withTrimmedBottom (4), "STEM SPLITTER", cyan);
-    art::drawTapeCounter (g, Rectangle<float> (26.0f, 58.0f, (float) getWidth() - 52.0f, 30.0f), counterValue, counterText.toUpperCase());
+    art::drawTapeCounter (g, Rectangle<float> (26.0f, 68.0f, (float) getWidth() - 52.0f, 28.0f), counterValue, counterText.toUpperCase());
     g.setColour (dim.brighter (0.5f)); g.setFont (body (12.0f, true));
-    g.drawText ("A full song takes a few minutes. QUICK TEST only does the first 30 seconds.", 330, getHeight() - 52, 400, 30, Justification::centred);
+    g.drawText ("Full songs take a few minutes. Quick test = first 30 s only.", 300, getHeight() - 46, 480, 20, Justification::centred);
     art::drawStar (g, { (float) getWidth() - 40.0f, 30.0f }, 16.0f, yellow, ink, 0.3f);
 }
 
 void SplitPage::resized()
 {
-    auto r = getLocalBounds().reduced (26, 20);
+    auto r = getLocalBounds().reduced (26, 20).withTrimmedTop (10);
     auto top = r.removeFromTop (34);
     optInstr.setBounds (top.removeFromLeft (190)); optVocal.setBounds (top.removeFromLeft (210)); optQuick.setBounds (top.removeFromLeft (170));
     goBtn.setBounds (top.removeFromRight (140)); top.removeFromRight (8);

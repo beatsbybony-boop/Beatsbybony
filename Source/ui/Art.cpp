@@ -1,4 +1,5 @@
 #include "Art.h"
+#include "Tag.h"
 #include <cmath>
 
 namespace bony::theme
@@ -172,10 +173,8 @@ void drawCassette (Graphics& g, Rectangle<float> a, const String& label, Colour 
     for (int i = 0; i < 2; ++i)
         g.drawLine (lab.getX() + w * 0.04f, lab.getBottom() - h * (0.05f + 0.045f * (float) i), lab.getRight() - w * 0.04f, lab.getBottom() - h * (0.05f + 0.045f * (float) i), 1.0f);
 
-    g.setColour (ink);
-    auto textArea = lab.withTrimmedTop (lab.getHeight() * 0.28f).reduced (w * 0.03f, 0.0f);
-    g.setFont (display (jmin (h * 0.19f, 26.0f)));
-    g.drawFittedText (label, textArea.toNearestInt().withTrimmedBottom ((int) (h * 0.06f)), Justification::centred, 1, 0.55f);
+    auto textArea = lab.withTrimmedTop (lab.getHeight() * 0.30f).reduced (w * 0.05f, lab.getHeight() * 0.04f).withTrimmedBottom (lab.getHeight() * 0.10f);
+    tag::drawSimple (g, label, textArea, ink.withAlpha (0.92f), Colours::transparentBlack, 0.15f);
 
     // tape window with reels
     auto win = Rectangle<float> (a.getX() + w * 0.20f, a.getY() + h * 0.62f, w * 0.60f, h * 0.24f);
@@ -270,32 +269,60 @@ void drawGraffitiText (Graphics& g, const String& text, Rectangle<float> area, c
 
 void drawLogo (Graphics& g, Rectangle<float> a)
 {
-    // "Beats" (pink)  "By" (cyan, small)  "Bony" (yellow) + crown
-    const float h = a.getHeight();
-    auto beats = Rectangle<float> (a.getX(), a.getY() + h * 0.10f, a.getWidth() * 0.38f, h * 0.80f);
-    auto by    = Rectangle<float> (beats.getRight() + 4.0f, a.getY() + h * 0.42f, a.getWidth() * 0.11f, h * 0.36f);
-    auto bony  = Rectangle<float> (by.getRight() + 4.0f, a.getY() + h * 0.10f, a.getWidth() * 0.47f, h * 0.80f);
+    // "Beats" (pink)  "By" (cyan)  "Bony" (yellow), hand-drawn marker tag with a crown
+    const float W = a.getWidth();
+    auto beats = Rectangle<float> (a.getX(), a.getY(), W * 0.42f, a.getHeight());
+    auto by    = Rectangle<float> (beats.getRight() - 16.0f, a.getY() + a.getHeight() * 0.18f, W * 0.17f, a.getHeight() * 0.82f);
+    auto bony  = Rectangle<float> (by.getRight() - 18.0f, a.getY(), W * 0.43f, a.getHeight());
 
-    GraffitiStyle s1; s1.fillTop = Colour (0xffff7dc0); s1.fillBottom = pink; s1.outline = ink; s1.rim = Colours::white;
-    s1.shadow = violet.darker (0.3f); s1.rotationDeg = -3.0f; s1.seed = 3; s1.outlineWidth = 5.0f; s1.rimWidth = 2.2f;
-    GraffitiStyle s2 = s1; s2.fillTop = Colour (0xff9af3ff); s2.fillBottom = cyan; s2.drips = false; s2.rotationDeg = -6.0f; s2.shadowDx = 3; s2.shadowDy = 4; s2.seed = 5; s2.outlineWidth = 4.0f; s2.rimWidth = 1.8f;
-    GraffitiStyle s3 = s1; s3.fillTop = Colour (0xffffef7a); s3.fillBottom = Colour (0xffffa800); s3.rotationDeg = -2.0f; s3.shadow = Colour (0xff6a1fd0); s3.seed = 11;
+    tag::Style s1; s1.fillTop = Colour (0xffff9ad0); s1.fillBottom = pink; s1.shadow = violet.darker (0.2f);
+    s1.smallScale = 0.8f; s1.seed = 4; s1.drips = true; s1.thickness = 0.32f; s1.outlineWidth = 0.12f; s1.rimWidth = 0.04f; s1.shadowDx = 0.08f; s1.shadowDy = 0.1f;
+    tag::Style s2 = s1; s2.fillTop = Colour (0xffb5f7ff); s2.fillBottom = cyan; s2.drips = false; s2.smallScale = 0.85f; s2.seed = 9;
+    tag::Style s3 = s1; s3.fillTop = Colour (0xffffef7a); s3.fillBottom = Colour (0xffffa000); s3.shadow = Colour (0xff6a1fd0); s3.seed = 13;
 
-    drawGraffitiText (g, "Beats", beats, s1);
-    drawGraffitiText (g, "By", by, s2);
-    drawGraffitiText (g, "Bony", bony, s3);
+    tag::draw (g, "Beats", beats, s1);
+    tag::draw (g, "By", by, s2);
+    auto used = tag::draw (g, "Bony", bony, s3);
 
-    // crown sitting on the B of Bony
-    drawCrown (g, Rectangle<float> (bony.getCentreX() - h * 0.34f, a.getY() - h * 0.26f, h * 0.68f, h * 0.52f), true);
-    // underline swoosh
+    drawCrown (g, Rectangle<float> (used.getX() - a.getHeight() * 0.10f, a.getY() - a.getHeight() * 0.30f, a.getHeight() * 0.62f, a.getHeight() * 0.48f), true);
+    // spray underline with an arrow
     Path sw;
-    sw.startNewSubPath (a.getX() + 6.0f, a.getBottom() - 2.0f);
-    sw.quadraticTo (a.getCentreX(), a.getBottom () + 8.0f, a.getRight() - 4.0f, a.getBottom() - 8.0f);
+    sw.startNewSubPath (a.getX() + 4.0f, a.getBottom () + 1.0f);
+    sw.quadraticTo (a.getCentreX(), a.getBottom () + 9.0f, a.getRight() - 14.0f, a.getBottom() - 4.0f);
     g.setColour (ink);   g.strokePath (sw, PathStrokeType (7.0f, PathStrokeType::curved, PathStrokeType::rounded));
     g.setColour (lime);  g.strokePath (sw, PathStrokeType (3.5f, PathStrokeType::curved, PathStrokeType::rounded));
+    Path head; head.addTriangle (a.getRight() - 4.0f, a.getBottom() - 10.0f, a.getRight() - 20.0f, a.getBottom() - 14.0f, a.getRight() - 14.0f, a.getBottom() + 1.0f);
+    g.setColour (ink); g.strokePath (head, PathStrokeType (4.0f, PathStrokeType::mitered)); g.setColour (lime); g.fillPath (head);
 }
 
 // ------------------------------------------------------------------ small decorations
+void drawBackdrop (Graphics& g, int w, int h)
+{
+    // big faint tags sprayed on the wall behind everything
+    struct T { const char* text; float x, y, wd, ht, rot; Colour a, b; int seed; };
+    const T tags[] = {
+        { "BEATS", 0.01f, 0.40f, 0.36f, 0.22f, -9.0f, Colour (0xffff5fae), Colour (0xffff2e93), 3 },
+        { "BONY",  0.60f, 0.44f, 0.38f, 0.24f, 7.0f,  Colour (0xffffe44a), Colour (0xffff9a00), 5 },
+        { "HIP HOP", 0.30f, 0.80f, 0.34f, 0.12f, -3.0f, Colour (0xff6af0ff), Colour (0xff1ee6ff), 8 },
+        { "86",    0.86f, 0.74f, 0.12f, 0.16f, 12.0f, Colour (0xffb5ff5a), Colour (0xff6bd400), 2 },
+        { "FRESH", 0.02f, 0.80f, 0.20f, 0.10f, 6.0f,  Colour (0xffc58bff), Colour (0xff8a3dff), 6 } };
+    for (auto& t : tags)
+    {
+        Graphics::ScopedSaveState ss (g);
+        g.beginTransparencyLayer (0.16f);
+        tag::Style st; st.fillTop = t.a; st.fillBottom = t.b; st.shadow = ink; st.thickness = 0.24f; st.smallScale = 1.0f; st.drips = true; st.seed = t.seed; st.shine = false;
+        auto area = Rectangle<float> (t.x * (float) w, t.y * (float) h, t.wd * (float) w, t.ht * (float) h);
+        g.addTransform (AffineTransform::rotation (degreesToRadians (t.rot), area.getCentreX(), area.getCentreY()));
+        tag::draw (g, t.text, area, st);
+        g.endTransparencyLayer();
+    }
+    drawSplat (g, { (float) w * 0.93f, (float) h * 0.30f }, 34.0f, pink.withAlpha (0.35f), 11);
+    drawSplat (g, { (float) w * 0.07f, (float) h * 0.62f }, 30.0f, cyan.withAlpha (0.30f), 12);
+    drawSplat (g, { (float) w * 0.52f, (float) h * 0.97f }, 26.0f, yellow.withAlpha (0.30f), 13);
+    drawStar (g, { (float) w * 0.97f, (float) h * 0.58f }, 16.0f, yellow.withAlpha (0.55f), ink.withAlpha (0.5f), 0.4f);
+    drawStar (g, { (float) w * 0.03f, (float) h * 0.25f }, 12.0f, cyan.withAlpha (0.55f), ink.withAlpha (0.5f), 0.2f);
+}
+
 void drawSplat (Graphics& g, Point<float> c, float radius, Colour col, int seed)
 {
     Random r (seed);
@@ -377,16 +404,14 @@ void drawNeonFrame (Graphics& g, Rectangle<float> a, Colour c, float corner, flo
 void drawDeck (Graphics& g, Rectangle<float> a, const String& title, Colour accent)
 {
     g.setColour (ink); g.fillRoundedRectangle (a.translated (4.0f, 5.0f), 10.0f);
-    g.setGradientFill (ColourGradient::vertical (Colour (0xff261240), a.getY(), Colour (0xff140a24), a.getBottom()));
+    g.setGradientFill (ColourGradient::vertical (Colour (0xe6261240), a.getY(), Colour (0xe6140a24), a.getBottom()));
     g.fillRoundedRectangle (a, 10.0f);
     drawNeonFrame (g, a, accent, 10.0f, 2.0f);
     if (title.isNotEmpty())
     {
-        auto tag = Rectangle<float> (a.getX() + 12.0f, a.getY() - 11.0f, 14.0f + (float) title.length() * 10.5f, 22.0f);
-        g.setColour (ink); g.fillRoundedRectangle (tag.expanded (2.0f), 5.0f);
-        g.setColour (accent); g.fillRoundedRectangle (tag, 4.0f);
-        g.setColour (ink); g.setFont (display (17.0f));
-        g.drawText (title, tag, Justification::centred);
+        tag::Style ts; ts.fillTop = accent.brighter (0.5f); ts.fillBottom = accent; ts.shadow = ink; ts.thickness = 0.2f; ts.smallScale = 1.0f; ts.drips = true;
+        ts.seed = title.length() * 5; ts.slant = 0.2f; ts.shadowDx = 0.05f; ts.shadowDy = 0.07f;
+        tag::draw (g, title, Rectangle<float> (a.getX() + 14.0f, a.getY() - 8.0f, 20.0f + (float) title.length() * 15.0f, 28.0f), ts);
     }
 }
 

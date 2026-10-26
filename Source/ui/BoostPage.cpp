@@ -1,5 +1,6 @@
 #include "BoostPage.h"
 #include "Art.h"
+#include "Tag.h"
 
 namespace bony
 {
@@ -86,11 +87,13 @@ void BoostPage::paint (Graphics& g)
     auto k = knobArea;
     g.setColour (ink.withAlpha (0.6f)); g.fillEllipse (k.expanded (14.0f));
     art::drawCrown (g, Rectangle<float> (k.getCentreX() - 56.0f, k.getY() - 70.0f, 112.0f, 86.0f), on);
-    g.setColour (on ? pink : dim); g.setFont (display (34.0f));
-    g.drawText ("BOOST  " + String ((int) amount.getValue()) + "%", Rectangle<float> (k.getX() - 40.0f, k.getBottom() + 8.0f, k.getWidth() + 80.0f, 40.0f), Justification::centred);
+    {
+        tag::Style ts; ts.fillTop = on ? Colour (0xffff9ad0) : dim.brighter (0.4f); ts.fillBottom = on ? pink : dim; ts.shadow = violet.darker (0.3f); ts.smallScale = 1.0f; ts.drips = on; ts.seed = 21;
+        tag::draw (g, "BOOST " + String ((int) amount.getValue()) + "%", Rectangle<float> (k.getX() - 20.0f, k.getBottom() + 4.0f, k.getWidth() + 40.0f, 50.0f), ts);
+    }
     g.setColour (cream.withAlpha (0.8f)); g.setFont (body (13.0f, true));
     g.drawText ("One knob: multiband squeeze + warmth + limiter. Pick a flavour, turn it up till it hits.",
-                Rectangle<float> (b.getX() + 40.0f, k.getBottom() + 46.0f, b.getWidth() - 80.0f, 18.0f), Justification::centred);
+                Rectangle<float> (b.getX() + 40.0f, k.getBottom() + 62.0f, b.getWidth() - 80.0f, 18.0f), Justification::centred);
 
     // meters
     smoothIn = jmax (proc.inLevel.load(), smoothIn * 0.85f);
@@ -115,7 +118,7 @@ void BoostPage::resized()
     amount.setBounds (knobArea.toNearestInt());
     for (int i = 0; i < 4; ++i)
         modeBtn[i].setBounds (b.getCentreX() - 130 + i * 66, b.getY() + 20, 60, 44);
-    powerBtn.setBounds (b.getCentreX() - 70, b.getBottom() - 70, 140, 50);
+    powerBtn.setBounds (b.getCentreX() - 70, b.getBottom() - 62, 140, 48);
     outTrim.setBounds (b.getRight() - 170, b.getY() + 215, 90, 90);
     lOut.setBounds (b.getRight() - 180, b.getY() + 195, 110, 20);
 }

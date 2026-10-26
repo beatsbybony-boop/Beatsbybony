@@ -1,5 +1,6 @@
 #include "BonyLookAndFeel.h"
 #include "Art.h"
+#include "Tag.h"
 
 namespace bony
 {
@@ -97,11 +98,11 @@ void BonyLookAndFeel::drawButtonBackground (Graphics& g, Button& b, const Colour
 
 void BonyLookAndFeel::drawButtonText (Graphics& g, TextButton& b, bool, bool down)
 {
-    g.setColour (b.getToggleState() ? b.findColour (TextButton::textColourOnId) : b.findColour (TextButton::textColourOffId));
-    g.setFont (display (jmin (22.0f, (float) b.getHeight() * 0.56f)));
-    auto r = b.getLocalBounds().reduced (6, 4);
-    if (down) r.translate (2, 2);
-    g.drawFittedText (b.getButtonText(), r, Justification::centred, 1, 0.7f);
+    const auto col = b.getToggleState() ? b.findColour (TextButton::textColourOnId) : b.findColour (TextButton::textColourOffId);
+    auto r = b.getLocalBounds().reduced (10, 8).toFloat();
+    if (down) r.translate (2.0f, 2.0f);
+    const bool dark = col.getBrightness() > 0.6f;
+    tag::drawSimple (g, b.getButtonText(), r, col, dark ? ink : Colours::transparentBlack, dark ? 0.17f : 0.15f);
 }
 
 void BonyLookAndFeel::drawToggleButton (Graphics& g, ToggleButton& b, bool, bool)

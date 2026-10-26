@@ -79,9 +79,10 @@ public:
         {
             const float a = smoothedAmount.getNextValue();
             float sumL = 0.0f, sumR = 0.0f;
+            const float drive = juce::Decibels::decibelsToGain (a * cfg.driveDb);   // pushes the signal into the squeezers
             for (int b = 0; b < 3; ++b)
             {
-                float l = bandBuf.getSample (2 * b, i), r = bandBuf.getSample (2 * b + 1, i);
+                float l = bandBuf.getSample (2 * b, i) * drive, r = bandBuf.getSample (2 * b + 1, i) * drive;
                 const float g = bands[(size_t) b].gain (l, r, a, cfg.band[(size_t) b], sr);
                 grAcc += (1.0f - g) * (b == 0 ? 0.4f : b == 1 ? 0.4f : 0.2f);
                 sumL += l * g * cfg.band[(size_t) b].tone;
@@ -120,14 +121,14 @@ public:
 
 private:
     struct BandCfg { float thrAtFull, ratio, attackMs, releaseMs, tone; };
-    struct ModeCfg { double xLow, xHigh; std::array<BandCfg, 3> band; float makeupDb, sat; };
+    struct ModeCfg { double xLow, xHigh; std::array<BandCfg, 3> band; float makeupDb, sat, driveDb; };
 
     // A = balanced, B = bass-heavy, C = bright, D = loud and crunchy
     std::array<ModeCfg, 4> modeCfg {{
-        { 150.0, 2800.0, {{ { -22.0f, 3.0f, 30.0f, 160.0f, 1.00f }, { -20.0f, 2.6f, 15.0f, 110.0f, 1.00f }, { -22.0f, 2.8f,  5.0f,  70.0f, 1.00f } }}, 5.0f, 0.25f },
-        { 190.0, 3200.0, {{ { -28.0f, 4.0f, 35.0f, 200.0f, 1.12f }, { -19.0f, 2.4f, 15.0f, 110.0f, 0.97f }, { -20.0f, 2.4f,  6.0f,  80.0f, 0.94f } }}, 5.5f, 0.30f },
-        { 130.0, 2200.0, {{ { -20.0f, 2.6f, 30.0f, 150.0f, 0.96f }, { -20.0f, 2.8f, 12.0f, 100.0f, 1.00f }, { -26.0f, 3.6f,  4.0f,  60.0f, 1.14f } }}, 5.0f, 0.22f },
-        { 160.0, 2600.0, {{ { -30.0f, 5.0f, 12.0f, 120.0f, 1.04f }, { -28.0f, 4.5f,  8.0f,  90.0f, 1.00f }, { -28.0f, 4.0f,  3.0f,  50.0f, 1.04f } }}, 7.5f, 0.55f }
+        { 150.0, 2800.0, {{ { -22.0f, 3.0f, 30.0f, 160.0f, 1.00f }, { -20.0f, 2.6f, 15.0f, 110.0f, 1.00f }, { -22.0f, 2.8f,  5.0f,  70.0f, 1.00f } }}, 1.5f, 0.25f, 13.0f },
+        { 190.0, 3200.0, {{ { -28.0f, 4.0f, 35.0f, 200.0f, 1.12f }, { -19.0f, 2.4f, 15.0f, 110.0f, 0.97f }, { -20.0f, 2.4f,  6.0f,  80.0f, 0.94f } }}, 2.0f, 0.30f, 13.0f },
+        { 130.0, 2200.0, {{ { -20.0f, 2.6f, 30.0f, 150.0f, 0.96f }, { -20.0f, 2.8f, 12.0f, 100.0f, 1.00f }, { -26.0f, 3.6f,  4.0f,  60.0f, 1.14f } }}, 1.5f, 0.22f, 13.0f },
+        { 160.0, 2600.0, {{ { -30.0f, 5.0f, 12.0f, 120.0f, 1.04f }, { -28.0f, 4.5f,  8.0f,  90.0f, 1.00f }, { -28.0f, 4.0f,  3.0f,  50.0f, 1.04f } }}, 2.0f, 0.55f, 18.0f }
     }};
 
     struct BandComp

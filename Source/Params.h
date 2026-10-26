@@ -44,7 +44,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
 
     l.add (std::make_unique<AudioParameterBool> (ParameterID { ids::boostOn, 1 }, "Boost On", false));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { ids::boostAmt, 1 }, "Boost",
-                                                   NormalisableRange<float> (0.0f, 100.0f, 0.1f), 35.0f));
+                                                   NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f));
     l.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::boostMode, 1 }, "Boost Mode",
                                                     StringArray { "A", "B", "C", "D" }, 0));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { ids::boostOut, 1 }, "Boost Output",

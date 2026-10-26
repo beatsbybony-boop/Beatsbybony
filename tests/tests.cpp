@@ -64,11 +64,11 @@ int main (int argc, char** argv)
                 for (int i = 0; i < 512; ++i)
                 {
                     const float t = (float) (blk * 512 + i) / 44100.0f;
-                    const float v = 0.25f * std::sin (6.28f * 110.0f * t) + 0.12f * std::sin (6.28f * 1500.0f * t) + 0.05f * std::sin (6.28f * 7000.0f * t);
+                    const float v = 0.06f * std::sin (6.28f * 110.0f * t) + 0.12f * std::sin (6.28f * 1500.0f * t) + 0.05f * std::sin (6.28f * 7000.0f * t);
                     buf.setSample (0, i, v); buf.setSample (1, i, v);
                     inRms += v * v;
                 }
-                b.process (buf, 80.0f, mode2, 0.0f);
+                b.process (buf, 35.0f, mode2, 0.0f);
                 for (int i = 0; i < 512; ++i) { const float o = buf.getSample (0, i); if (! std::isfinite (o)) bad = true; peak = std::max (peak, std::abs (o)); outRms += o * o; }
             }
             std::cout << "BOOST mode " << mode2 << ": peak " << peak << " gain " << 10.0 * std::log10 (outRms / inRms) << " dB\n";

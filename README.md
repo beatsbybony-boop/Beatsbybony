@@ -34,7 +34,7 @@ If FL says the plugin can't load, install the free *Microsoft Visual C++ Redistr
 - **LOAD** a sample, **drop** a file on the plugin window, or press **REC** to record whatever is going through the plugin's mixer track. **SYNC REC** records automatically while FL's transport plays.
 - **quickGRAB** slider: up = more notes (including quiet or doubtful ones), down = only the clearest.
 - **LOW / HIGH**: only keep notes in that range. **GAIN**: helps with very quiet recordings.
-- Click a note to switch it on or off. Click the keys on the left to hear a pitch. **FIT** re-centres the view; mouse wheel zooms, Shift+wheel scrolls.
+- Click a note to switch it on or off. Click the keys on the left to hear a pitch. **FIT** re-centres the view; mouse wheel zooms (on the waveform or the notes), Shift+wheel scrolls.
 - **PLAY** auditions the grabbed notes with a built-in sound (**SOUND** picker), optionally together with the original (**HEAR SOURCE**).
 - **SNAP** tidies timing to a grid when the MIDI is created. Tempo comes from FL Studio.
 - Drag the **DRAG MIDI** cassette into FL's piano roll or playlist, or press **SAVE .MID**.

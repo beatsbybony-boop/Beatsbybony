@@ -21,6 +21,8 @@ public:
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    std::function<void()> onViewChanged;
 private:
     void timerCallback() override { repaint(); }
     BonyProcessor& proc; TimeView& view;

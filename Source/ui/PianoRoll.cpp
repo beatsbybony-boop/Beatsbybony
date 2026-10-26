@@ -57,6 +57,19 @@ void WaveformView::paint (Graphics& g)
 void WaveformView::mouseDown (const MouseEvent& e) { proc.seekSeconds (jmax (0.0, view.secOf ((float) e.x))); }
 void WaveformView::mouseDrag (const MouseEvent& e) { proc.seekSeconds (jmax (0.0, view.secOf ((float) e.x))); }
 
+void WaveformView::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
+{
+    if (e.mods.isShiftDown() || std::abs (w.deltaX) > std::abs (w.deltaY))
+        view.startSec = jmax (0.0, view.startSec - (w.deltaX != 0 ? w.deltaX : w.deltaY) * 600.0 / view.pixelsPerSec);
+    else
+    {
+        const double anchor = view.secOf ((float) e.x);
+        view.pixelsPerSec = jlimit (4.0, 4000.0, view.pixelsPerSec * (1.0 + w.deltaY * 0.8));
+        view.startSec = jmax (0.0, anchor - (e.x - view.leftMargin) / view.pixelsPerSec);
+    }
+    repaint(); if (onViewChanged) onViewChanged();
+}
+
 // ------------------------------------------------------------------ piano roll
 PianoRoll::PianoRoll (BonyProcessor& p, TimeView& v) : proc (p), view (v) { startTimerHz (30); }
 
@@ -166,6 +179,12 @@ void PianoRoll::paint (Graphics& g)
         g.setColour (isBlack (m) ? Colour (0xff120a1f) : Colour (0xff1c1030));
         g.fillRect ((float) view.leftMargin, y, b.getWidth(), rh);
         if (m % 12 == 0) { g.setColour (violet.withAlpha (0.55f)); g.drawHorizontalLine ((int) (y + rh), (float) view.leftMargin, b.getWidth()); }
+    }
+    {   // rows outside the LOW..HIGH range are shaded
+        float sens0; int rlo, rhi; currentParams (sens0, rlo, rhi);
+        g.setColour (Colours::black.withAlpha (0.45f));
+        for (int m = lowNote; m <= highNote; ++m)
+            if (m < rlo || m > rhi) g.fillRect ((float) view.leftMargin, yOfNote (m), b.getWidth(), rh);
     }
     // beat grid
     const double bpm = proc.getHostBpm();

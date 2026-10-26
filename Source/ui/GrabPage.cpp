@@ -1,5 +1,6 @@
 #include "GrabPage.h"
 #include "Art.h"
+#include "Tag.h"
 
 namespace bony
 {
@@ -16,8 +17,8 @@ public:
         art::drawCheckerStrip (g, b.removeFromTop (6.0f), pink, ink, 6.0f);
         g.setColour (ink); g.fillRoundedRectangle (b, 8.0f);
         art::drawCassette (g, Rectangle<float> (10.0f, b.getY() + 4.0f, 86.0f, b.getHeight() - 10.0f), "MIDI", yellow, angle, hot, false, false);
-        g.setColour (hot ? yellow : cream); g.setFont (display (24.0f));
-        g.drawText ("DRAG MIDI  >>  FL PIANO ROLL", 108, (int) b.getY(), getWidth() - 112, (int) b.getHeight() - 14, Justification::centredLeft);
+        tag::Style ts; ts.fillTop = hot ? Colour (0xffffef7a) : Colour (0xfffff3d6); ts.fillBottom = hot ? yellow : cream; ts.shadow = pink.darker (0.2f); ts.smallScale = 1.0f; ts.seed = 31; ts.slant = 0.15f;
+        tag::draw (g, "DRAG MIDI >> FL PIANO ROLL", Rectangle<float> (106.0f, b.getY() + 2.0f, (float) getWidth() - 120.0f, b.getHeight() - 24.0f), ts);
         g.setColour (dim.brighter (0.5f)); g.setFont (body (13.0f, true));
         g.drawText (String (count) + " notes ready  -  grab it and drop it on a pattern", 108, (int) b.getBottom() - 24, getWidth() - 112, 18, Justification::centredLeft);
     }
@@ -78,6 +79,10 @@ GrabPage::GrabPage (BonyProcessor& p) : proc (p), wave (p, view), roll (p, view)
     snapBox.addItemList ({ "Off", "1/4", "1/8", "1/16", "1/32" }, 1);
     soundBox.addItemList ({ "Keys", "Saw", "Square", "Sine" }, 1);
 
+    // the LOW slider can never pass the HIGH slider (that used to switch every note off)
+    lowSl.onValueChange  = [this] { if (highSl.getValue() < lowSl.getValue() + 1) highSl.setValue (jmin (108.0, lowSl.getValue() + 1)); };
+    highSl.onValueChange = [this] { if (lowSl.getValue() > highSl.getValue() - 1) lowSl.setValue (jmax (12.0, highSl.getValue() - 1)); };
+    wave.onViewChanged = [this] { roll.repaint(); };
     grabA = std::make_unique<SA> (proc.apvts, ids::grabSens, grabSl);
     lowA  = std::make_unique<SA> (proc.apvts, ids::grabLow, lowSl);
     highA = std::make_unique<SA> (proc.apvts, ids::grabHigh, highSl);

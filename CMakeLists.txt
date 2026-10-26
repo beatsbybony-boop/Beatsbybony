@@ -65,6 +65,7 @@ target_sources(BeatsByBony PRIVATE
     Source/stems/OrtRuntime.cpp
     Source/stems/StemEngine.cpp
     Source/ui/Art.cpp
+    Source/ui/Tag.cpp
     Source/ui/BonyLookAndFeel.cpp
     Source/ui/PianoRoll.cpp
     Source/ui/GrabPage.cpp

@@ -22,6 +22,7 @@ namespace bony::art
                        juce::Colour accent, float reelAngle, bool lit, bool empty, bool withCrown);
     void drawGraffitiText (juce::Graphics&, const juce::String& text, juce::Rectangle<float> area, const GraffitiStyle&);
     void drawLogo (juce::Graphics&, juce::Rectangle<float> area);
+    void drawBackdrop (juce::Graphics&, int width, int height);
     void drawSplat (juce::Graphics&, juce::Point<float> centre, float radius, juce::Colour, int seed);
     void drawStar (juce::Graphics&, juce::Point<float> centre, float radius, juce::Colour fill, juce::Colour outline, float rotation = 0.0f, int points = 5);
     void drawBolt (juce::Graphics&, juce::Rectangle<float> area, juce::Colour fill);

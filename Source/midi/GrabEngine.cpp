@@ -56,9 +56,9 @@ void GrabEngine::run()
 
 bool GrabEngine::isActive (const GrabNote& n, float sens, int lo, int hi) const
 {
-    if (n.midi < lo || n.midi > hi) return false;
-    if (n.manual > 0) return true;
+    if (n.manual > 0) return true;                 // a note you clicked on stays on, whatever the sliders say
     if (n.manual < 0) return false;
+    if (n.midi < lo || n.midi > hi) return false;
     return n.strength >= thresholdFor (sens);
 }
 

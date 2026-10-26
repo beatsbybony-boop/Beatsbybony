@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "ui/Art.h"
+#include "ui/Tag.h"
 
 namespace bony
 {
@@ -41,18 +42,13 @@ public:
             bricks = Image (Image::RGB, getWidth(), getHeight(), false);
             Graphics bg (bricks);
             art::drawBricks (bg, bricks.getBounds());
+            art::drawBackdrop (bg, getWidth(), getHeight());
+            header = Image (Image::ARGB, getWidth(), 112, true);
+            Graphics hg (header);
+            paintHeader (hg);
         }
         g.drawImageAt (bricks, 0, 0);
-
-        // header band
-        auto head = Rectangle<float> (0, 0, (float) getWidth(), 104.0f);
-        g.setGradientFill (ColourGradient::vertical (Colour (0xdd1b0a2e), 0, Colour (0xee0b0612), head.getHeight()));
-        g.fillRect (head);
-        art::drawCheckerStrip (g, Rectangle<float> (0, head.getBottom() - 8.0f, head.getWidth(), 8.0f), pink, ink, 8.0f);
-        art::drawLogo (g, Rectangle<float> (22.0f, 30.0f, 520.0f, 66.0f));
-        art::drawStar (g, { 552.0f, 22.0f }, 11.0f, yellow, ink, 0.3f);
-        art::drawSticker (g, "OLD SCHOOL MEETS NEW SCHOOL", Rectangle<float> (22.0f, 6.0f, 250.0f, 18.0f), yellow, ink, -1.5f);
-        // little cassettes in the corner
+        g.drawImageAt (header, 0, 0);
         art::drawCassette (g, Rectangle<float> (getWidth() - 100.0f, 22.0f, 84.0f, 54.0f), "BBB-86", orange, spin, true, false, false);
 
         // footer
@@ -64,12 +60,25 @@ public:
         g.setColour (cyan); g.drawText ("v1.0", foot.reduced (14.0f, 0), Justification::centredRight);
     }
 
+    void paintHeader (Graphics& g)
+    {
+        // header band
+        auto head = Rectangle<float> (0, 0, (float) getWidth(), 104.0f);
+        g.setGradientFill (ColourGradient::vertical (Colour (0xdd1b0a2e), 0, Colour (0xee0b0612), head.getHeight()));
+        g.fillRect (head);
+        art::drawCheckerStrip (g, Rectangle<float> (0, head.getBottom() - 8.0f, head.getWidth(), 8.0f), pink, ink, 8.0f);
+        art::drawLogo (g, Rectangle<float> (26.0f, 30.0f, 520.0f, 60.0f));
+        art::drawStar (g, { 562.0f, 20.0f }, 11.0f, yellow, ink, 0.3f);
+        art::drawSticker (g, "OLD SCHOOL MEETS NEW SCHOOL", Rectangle<float> (590.0f, 10.0f, 250.0f, 20.0f), yellow, ink, -1.5f);
+
+    }
+
     void resized() override
     {
         auto r = getLocalBounds();
         r.removeFromBottom (26);
         auto head = r.removeFromTop (104);
-        for (int i = 0; i < 3; ++i) tabs[i].setBounds (566 + i * 108, 40, 102, 44);
+        for (int i = 0; i < 3; ++i) tabs[i].setBounds (576 + i * 104, 40, 100, 44);
         grab.setBounds (r); split.setBounds (r); boost.setBounds (r);
     }
 
@@ -79,7 +88,7 @@ private:
     GrabPage grab; SplitPage split; BoostPage boost;
     TextButton tabs[3];
     int page = 0;
-    Image bricks;
+    Image bricks, header;
 };
 
 BonyEditor::BonyEditor (BonyProcessor& p) : AudioProcessorEditor (&p), proc (p)

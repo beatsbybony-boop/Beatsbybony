@@ -122,8 +122,9 @@ void SplitterPage::refresh()
 {
     const bool have = proc.models.allPresent();
     const bool working = proc.stems.getState() == StemEngine::State::Working;
-    dlBtn.setVisible (! have);
-    dlBtn.setEnabled (! proc.models.isDownloading());
+    dlBtn.setVisible (true);                       // always shown, so it is never missing when a model is needed
+    dlBtn.setEnabled (! have && ! proc.models.isDownloading());
+    dlBtn.setButtonText (have ? "MODELS READY" : "DOWNLOAD " + String ((int) ((proc.models.totalBytesMissing() + 500000) / 1000000)) + " MB");
     goBtn.setEnabled (have && (proc.getSource() != nullptr || working));
     goBtn.setButtonText (working ? "CANCEL" : "SPLIT IT!");
     playBtn.setButtonText (proc.isPlaying() ? "STOP" : "PLAY");
